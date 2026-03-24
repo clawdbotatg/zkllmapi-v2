@@ -1,84 +1,231 @@
-
 "use client";
 
-import { useAccount } from "wagmi";
-import { Address } from "@scaffold-ui/components";
-import type { NextPage } from "next";
-import { hardhat } from "viem/chains";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { useTargetNetwork } from "~~/hooks/scaffold-eth";
+import type { NextPage } from "next";
+import { formatEther } from "viem";
+import { useReadContract } from "wagmi";
+import externalContracts from "~~/contracts/externalContracts";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
 const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
-  const { targetNetwork } = useTargetNetwork();
+  const [spentCount, setSpentCount] = useState<number | null>(null);
+  const [treeSize, setTreeSize] = useState<number | null>(null);
+  const [apiCreditsAddress, setApiCreditsAddress] = useState<`0x${string}` | undefined>(undefined);
+
+  const { data: quoteData } = useReadContract({
+    address: externalContracts[8453].CLAWDRouter.address,
+    abi: externalContracts[8453].CLAWDRouter.abi,
+    functionName: "quoteCredits",
+    args: [1n],
+    chainId: 8453,
+  });
+
+  useEffect(() => {
+    fetch(`${API_URL}/health`)
+      .then(r => r.json())
+      .then(d => {
+        setSpentCount(d.spentNullifiers ?? null);
+        setTreeSize(d.treeSize ?? null);
+      })
+      .catch(() => {});
+
+    fetch(`${API_URL}/contract`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.address) setApiCreditsAddress(d.address as `0x${string}`);
+      })
+      .catch(() => {});
+  }, []);
+
+  const priceUsd = quoteData ? `$${Number(formatEther((quoteData as [bigint, bigint])[1])).toFixed(4)}` : null;
 
   return (
-    <>
-      <div className="flex items-center flex-col grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-            
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address
-              address={connectedAddress}
-              chain={targetNetwork}
-              blockExplorerAddressLink={
-                targetNetwork.id === hardhat.id ? `/blockexplorer/address/${connectedAddress}` : undefined
-              }
-            />
+    <div
+      className="relative min-h-[calc(100vh-56px)]"
+      style={{
+        backgroundImage: "url(/hero.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center top",
+      }}
+    >
+      <div className="absolute inset-0 bg-black/75" />
+      <div className="relative z-10">
+        <div className="max-w-5xl mx-auto px-6 pt-24 pb-32">
+          {/* Tag line */}
+          <div className="mb-6">
+            <span className="text-xs font-mono text-primary border border-primary/30 px-2 py-1">
+              PRIVATE LLM API — BASE MAINNET — OPEN SOURCE
+            </span>
           </div>
-          
-<p className="text-center text-lg">
-  Get started by editing{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    packages/nextjs/app/page.tsx
-  </code>
-</p>
-<p className="text-center text-lg">
-  Edit your smart contract{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    YourContract.sol
-  </code>{" "}
-  in{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    packages/hardhat/contracts
-  </code>
-</p>
 
-        </div>
+          {/* Hero */}
+          <h1 className="text-6xl md:text-7xl font-mono font-bold leading-none mb-8 tracking-tight">
+            Anonymous LLM
+            <br />
+            access. No account.
+            <br />
+            No identity.
+            <br />
+            <span className="text-4xl md:text-5xl text-base-content/50">Hella forkable.</span>
+          </h1>
 
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
+          <p className="text-base-content/50 text-lg font-mono mb-12 max-w-xl leading-relaxed">
+            Buy a credit onchain. Your browser generates a<br />
+            zero-knowledge proof. The server verifies it.
+            <br />
+            It knows you paid. Nothing else.
+          </p>
+
+          {/* CTAs */}
+          <div className="flex flex-wrap items-center gap-4 mb-20">
+            <Link
+              href="/buy"
+              className="font-mono text-sm bg-[#F14E47] text-black px-6 py-3 hover:bg-[#d43d37] transition-colors font-bold"
+            >
+              BUY A CREDIT →
+            </Link>
+            <a
+              href="/skill.md"
+              className="font-mono text-sm border border-[#333] text-base-content/60 px-6 py-3 hover:border-[#42F38F]/50 hover:text-[#42F38F] transition-colors"
+            >
+              TRAIN YOUR BOT ↗
+            </a>
+          </div>
+
+          {/* Stats bar */}
+          <div className="border border-[#333] grid grid-cols-3 mb-20 bg-black/80 backdrop-blur-sm">
+            <div className="border-r border-[#333] p-6">
+              <p className="text-3xl font-mono font-bold">{treeSize ?? "—"}</p>
+              <p className="text-xs font-mono text-base-content/40 mt-1">CREDITS ISSUED</p>
             </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
+            <div className="border-r border-[#333] p-6">
+              <p className="text-3xl font-mono font-bold">{spentCount ?? "—"}</p>
+              <p className="text-xs font-mono text-base-content/40 mt-1">API CALLS MADE</p>
             </div>
+            <div className="p-6">
+              <p className="text-3xl font-mono font-bold text-[#42F38F]">{priceUsd ?? "—"}</p>
+              <p className="text-xs font-mono text-base-content/40 mt-1">PER CREDIT</p>
+            </div>
+          </div>
+
+          {/* How it works */}
+          <div className="mb-20">
+            <p className="text-xs font-mono text-base-content/30 mb-8 tracking-widest">HOW IT WORKS</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-[#333] bg-black/80 backdrop-blur-sm">
+              {[
+                {
+                  n: "01",
+                  title: "Buy a credit",
+                  body: priceUsd
+                    ? `Pay ${priceUsd} on Base. Your browser generates a secret locally — the contract stores only a cryptographic hash.`
+                    : "Pay on Base. Your browser generates a secret locally — the contract stores only a cryptographic hash.",
+                },
+                {
+                  n: "02",
+                  title: "Generate a proof",
+                  body: "When you make a request, your browser generates a zero-knowledge proof that you own a valid credit — without revealing which one.",
+                },
+                {
+                  n: "03",
+                  title: "Call the LLM",
+                  body: "POST your proof to our API. We verify it and forward to the model. We know you paid. That's all we know.",
+                },
+              ].map(({ n, title, body }, i) => (
+                <div key={n} className={`p-8 ${i < 2 ? "md:border-r border-b md:border-b-0 border-[#333]" : ""}`}>
+                  <p className="text-xs font-mono text-[#42F38F] mb-4">{n}</p>
+                  <h3 className="font-mono font-bold text-base mb-3">{title}</h3>
+                  <p className="text-sm font-mono text-base-content/50 leading-relaxed">{body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Code snippet */}
+          <div className="mb-20">
+            <p className="text-xs font-mono text-base-content/30 mb-4 tracking-widest">DIRECT API ACCESS</p>
+            <div className="border border-[#333] bg-black/90 backdrop-blur-sm overflow-x-auto">
+              <div className="border-b border-[#333] px-4 py-2 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#333]"></div>
+                <div className="w-2 h-2 rounded-full bg-[#333]"></div>
+                <div className="w-2 h-2 rounded-full bg-[#333]"></div>
+                <span className="text-xs font-mono text-base-content/30 ml-2">example.sh</span>
+              </div>
+              <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Buy a credit at zkllmapi.com/buy — it gives you a one-time API key.
+# The server generates the ZK proof for you. No circuit setup needed.
+
+curl -X POST https://backend.zkllmapi.com/v1/chat/key \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "apiKey": "zk-llm-{base64url(\\"nullifier:secret:commitment\\")}",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# Or run the OpenAI-compatible proxy locally (auto-buys credits, pre-warms proofs):
+# git clone https://github.com/clawdbotatg/zkllmapi-proxy && npm install && npm start
+# Then point any OpenAI client at http://localhost:3100/v1/chat/completions
+
+# For maximum privacy (DIY ZK proof in your browser):
+# See https://zkllmapi.com/fork for the circuit + integration guide.`}</pre>
+            </div>
+          </div>
+
+          {/* Bottom links */}
+          <div className="flex flex-wrap gap-8 text-xs font-mono text-base-content/50 bg-black/60 backdrop-blur-sm px-4 py-3 border border-[#333]">
+            <a
+              href="https://github.com/clawdbotatg/zk-llm-frontend"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#42F38F] transition-colors"
+            >
+              FRONTEND GITHUB ↗
+            </a>
+            <a
+              href="https://github.com/clawdbotatg/zk-api-credits"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#42F38F] transition-colors"
+            >
+              BACKEND GITHUB ↗
+            </a>
+            <a
+              href="https://github.com/clawdbotatg/zkllmapi-proxy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#42F38F] transition-colors"
+            >
+              PROXY GITHUB ↗
+            </a>
+            <a
+              href="https://github.com/clawdbotatg/zkllmapi-client"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#42F38F] transition-colors"
+            >
+              CLI GITHUB ↗
+            </a>
+            <a
+              href={apiCreditsAddress ? `https://basescan.org/address/${apiCreditsAddress}` : "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#42F38F] transition-colors"
+            >
+              CONTRACT ↗
+            </a>
+            <Link href="/about" className="hover:text-[#42F38F] transition-colors">
+              HOW IT WORKS
+            </Link>
+            <Link href="/fork" className="hover:text-[#42F38F] transition-colors">
+              FORK THIS
+            </Link>
+            <a href="/skill.md" className="hover:text-[#42F38F] transition-colors">
+              SKILL.md
+            </a>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

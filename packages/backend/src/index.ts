@@ -11,6 +11,7 @@ import { createPublicClient, http, webSocket, parseAbi, parseAbiItem } from "vie
 import { base } from "viem/chains";
 import { Barretenberg, Fr } from "@aztec/bb.js";
 import { VerifierPool } from "./verifier-pool.js";
+import { createToken, getToken, deductToken } from "./token-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -816,6 +817,209 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
 });
 
 /**
+ * POST /v1/chat/start
+ * Burns nullifier, creates conversation token, returns first LLM response.
+ * Subsequent calls use /v1/chat with Bearer token.
+ *
+ * Body: {
+ *   "proof": "<hex string>",
+ *   "nullifier_hash": "0x...",
+ *   "root": "0x...",
+ *   "depth": <number>,
+ *   "messages": [{ "role": "user", "content": "..." }],
+ * }
+ *
+ * Response: {
+ *   "token": "<bearer token>",
+ *   "balanceRemaining": <dollars remaining>,
+ *   "response": <venice chat completions response>,
+ * }
+ */
+app.post("/v1/chat/start", chatLimiter, async (req, res) => {
+  const reqId = Math.random().toString(36).slice(2, 8);
+  const t0 = Date.now();
+  const ts = () => `+${Date.now() - t0}ms`;
+  console.log(`[${reqId}] POST /v1/chat/start — received`);
+
+  const {
+    proof,
+    nullifier_hash,
+    root,
+    depth,
+    messages,
+    encrypted_messages,
+  } = req.body;
+
+  if (req.body.model && req.body.model !== MODEL) {
+    console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
+  }
+
+  const isE2EE = !!encrypted_messages;
+
+  if (!proof || !nullifier_hash || !root || depth === undefined) {
+    res.status(400).json({ error: "Missing required fields: proof, nullifier_hash, root, depth" });
+    return;
+  }
+  if (!isE2EE && (!messages || !Array.isArray(messages))) {
+    res.status(400).json({ error: "Missing required field: messages" });
+    return;
+  }
+
+  if (pendingNullifiers.has(nullifier_hash)) {
+    res.status(429).json({ error: "This nullifier is currently being processed — try again in a moment" });
+    return;
+  }
+  if (await isNullifierSpent(nullifier_hash)) {
+    res.status(403).json({ error: "Nullifier already spent" });
+    return;
+  }
+  pendingNullifiers.add(nullifier_hash);
+  console.log(`[${reqId}] nullifier + root checks passed (${ts()})`);
+
+  try {
+    if (validRoots.size === 0) {
+      res.status(403).json({ error: "No commitments registered yet" });
+      return;
+    }
+    if (!validRoots.has(root)) {
+      res.status(403).json({ error: "Invalid root — not in valid root set" });
+      return;
+    }
+    if (verifierPool.activeCount >= verifierPool.size) {
+      res.status(503).json({ error: "Server busy — all verifier workers occupied, please retry in a moment" });
+      return;
+    }
+
+    const tVerifyStart = Date.now();
+    console.log(`[${reqId}] starting proof verification (${ts()})`);
+    let proofValid = false;
+    try {
+      proofValid = await verifyProof(proof, nullifier_hash, root, depth);
+      const verifyMs = Date.now() - tVerifyStart;
+      if (!proofValid) {
+        console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
+        res.status(403).json({ error: "Invalid proof" });
+        return;
+      }
+      console.log(`[${reqId}] proof verified ✅ — ${verifyMs}ms`);
+    } catch (verifyError: any) {
+      console.error(`[${reqId}] proof verification threw:`, verifyError);
+      res.status(403).json({ error: "Proof verification failed", details: verifyError.message });
+      return;
+    }
+
+    let tokenId: string;
+    try {
+      tokenId = await createToken(nullifier_hash, root, depth);
+      console.log(`[${reqId}] token created: ${tokenId.slice(0, 16)}... (${ts()})`);
+    } catch (tokenError: any) {
+      console.error(`[${reqId}] token creation failed:`, tokenError);
+      res.status(500).json({ error: "Failed to create conversation token" });
+      return;
+    }
+
+    const tVeniceStart = Date.now();
+    console.log(`[${reqId}] calling Venice (${ts()})${isE2EE ? " [E2EE 🔒]" : ""}`);
+    try {
+      const veniceHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${VENICE_API_KEY}`,
+      };
+      const e2eeHeaderNames = ["x-venice-tee-client-pub-key", "x-venice-tee-model-pub-key", "x-venice-tee-signing-algo"];
+      for (const h of e2eeHeaderNames) {
+        const val = req.headers[h] as string | undefined;
+        if (val) veniceHeaders[h] = val;
+      }
+
+      const MAX_COST_USD = 0.05;
+      const INPUT_PRICE_PER_TOKEN = 1.00 / 1_000_000;
+      let estimatedInputBytes: number;
+      if (isE2EE && encrypted_messages) {
+        estimatedInputBytes = Buffer.byteLength(typeof encrypted_messages === "string" ? encrypted_messages : JSON.stringify(encrypted_messages), "utf8");
+      } else {
+        estimatedInputBytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
+      }
+      const estimatedInputTokens = Math.ceil(estimatedInputBytes / 4);
+      const estimatedInputCost = estimatedInputTokens * INPUT_PRICE_PER_TOKEN;
+
+      if (estimatedInputCost > MAX_COST_USD) {
+        const maxBytes = Math.floor((MAX_COST_USD / INPUT_PRICE_PER_TOKEN) * 4);
+        res.status(400).json({ error: `Request too large — max ~${maxBytes.toLocaleString()} bytes ($${MAX_COST_USD} budget)` });
+        return;
+      }
+
+      const veniceBody: Record<string, any> = { model: MODEL, stream: false };
+      if (isE2EE) {
+        veniceBody.encrypted_messages = encrypted_messages;
+        veniceBody.messages = [];
+      } else {
+        veniceBody.messages = messages;
+      }
+
+      const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
+      const veniceResponse = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: veniceHeaders,
+        body: JSON.stringify(veniceBody),
+        signal: AbortSignal.timeout(VENICE_TIMEOUT_MS),
+      });
+
+      const veniceMs = Date.now() - tVeniceStart;
+
+      if (!veniceResponse.ok) {
+        const errorText = await veniceResponse.text();
+        console.error(`[${reqId}] Venice error ${veniceResponse.status} — ${veniceMs}ms:`, errorText);
+        res.status(502).json({ error: "Venice API error", status: veniceResponse.status });
+        return;
+      }
+
+      const veniceData = await veniceResponse.json();
+      const totalMs = Date.now() - t0;
+
+      let costUsd = 0;
+      const usage = veniceData?.usage;
+      if (usage?.prompt_tokens) {
+        const inputCost = (usage.prompt_tokens / 1_000_000) * INPUT_PRICE_PER_TOKEN;
+        const outputCost = ((usage.completion_tokens || 0) / 1_000_000) * (3.20 / 1_000_000);
+        costUsd = inputCost + outputCost;
+      }
+      if (costUsd > 0) {
+        await deductToken(tokenId, costUsd);
+        console.log(`[${reqId}] deducted $${costUsd.toFixed(4)} from token`);
+      }
+
+      await saveNullifier(nullifier_hash);
+      console.log(`[${reqId}] nullifier burned (${ts()})`);
+
+      const tokenData = await getToken(tokenId);
+      console.log(`[${reqId}] ✅ done — Venice: ${veniceMs}ms | total: ${totalMs}ms`);
+
+      res.json({
+        token: tokenId,
+        balanceRemaining: tokenData?.balanceRemaining ?? 1.0,
+        response: veniceData,
+      });
+    } catch (veniceError: any) {
+      const veniceMs = Date.now() - tVeniceStart;
+      const isTimeout = veniceError?.name === "TimeoutError" || veniceError?.name === "AbortError";
+      if (isTimeout) {
+        console.error(`[${reqId}] Venice timed out after ${veniceMs}ms`);
+        res.status(504).json({ error: "Venice API timed out — nullifier NOT burned, safe to retry" });
+      } else {
+        console.error(`[${reqId}] Venice request failed:`, veniceError);
+        res.status(502).json({ error: "Failed to reach Venice API", details: veniceError.message });
+      }
+      return;
+    }
+  } catch (error: any) {
+    console.error(`[${reqId}] unexpected error (${ts()}):`, error);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    pendingNullifiers.delete(nullifier_hash);
+  }
+});
+
+/**
  * Main API endpoint — verify proof + proxy to Venice
  *
  * POST /v1/chat
@@ -1098,7 +1302,7 @@ async function start() {
   // Initialize verifier worker pool
   const poolSize = Math.max(1, os.cpus().length - 1);
   console.log(`Initializing verifier pool (${poolSize} workers)...`);
-  const workerScript = path.resolve(__dirname, "verifier-worker.ts");
+  const workerScript = path.resolve(__dirname, "verifier-worker.js");
   const circuit = JSON.parse(fs.readFileSync(CIRCUIT_PATH, "utf-8"));
   verifierPool = new VerifierPool(circuit.bytecode, workerScript, poolSize);
   await verifierPool.init();

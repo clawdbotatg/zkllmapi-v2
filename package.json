@@ -1,5 +1,5 @@
 {
-  "name": "se-2",
+  "name": "@zkllmapi/monorepo",
   "version": "0.0.1",
   "private": true,
   "workspaces": {
@@ -13,7 +13,7 @@
     "account:import": "yarn foundry:account-import",
     "account:reveal-pk": "yarn workspace @se-2/foundry account:reveal-pk",
     "chain": "yarn foundry:chain",
-    "compile": "yarn foundry:compile",
+    "compile": "yarn foundry:compile && yarn circuits:compile",
     "deploy": "yarn foundry:deploy",
     "flatten": "yarn foundry:flatten",
     "fork": "yarn foundry:fork",
@@ -47,7 +47,14 @@
     "vercel": "yarn workspace @se-2/nextjs vercel",
     "vercel:login": "yarn workspace @se-2/nextjs vercel:login",
     "vercel:yolo": "yarn workspace @se-2/nextjs vercel:yolo",
-    "verify": "yarn foundry:verify"
+    "verify": "yarn foundry:verify",
+    "backend:dev": "yarn workspace @zkllmapi/backend dev",
+    "backend:build": "yarn workspace @zkllmapi/backend build",
+    "backend:typecheck": "yarn workspace @zkllmapi/backend typecheck",
+    "proxy:dev": "yarn workspace @zkllmapi/proxy dev",
+    "proxy:build": "yarn workspace @zkllmapi/proxy build",
+    "proxy:typecheck": "yarn workspace @zkllmapi/proxy typecheck",
+    "circuits:compile": "yarn workspace @zkllmapi/circuits compile"
   },
   "devDependencies": {
     "husky": "~9.1.6",

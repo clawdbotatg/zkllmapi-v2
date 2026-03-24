@@ -213,23 +213,15 @@ async function buildHistoricalRoots(): Promise<void> {
     (a, b) => Number(a.args.index!) - Number(b.args.index!)
   );
 
+  // Populate treeLeaves from events (needed for /tree endpoint)
   for (const event of sorted) {
-    const root = await insertLeafAndGetRoot(event.args.commitment!);
-    const rootHex = rootToHex(root);
-    validRoots.set(rootHex, event.blockNumber);
-    currentRoot = rootHex;
-
-    // Also register the compact root for this tree state
-    const compactRoot = await computeCompactRoot(treeLeaves);
-    if (compactRoot !== null) {
-      const compactRootHex = rootToHex(compactRoot);
-      if (compactRootHex !== rootHex) {
-        validRoots.set(compactRootHex, event.blockNumber);
-      }
-    }
+    treeLeaves.push(event.args.commitment!);
   }
+  treeSize = treeLeaves.length;
 
-  // Verify our computed root matches the contract's current root
+  // Trust the onchain root from getTreeData() — our local incremental
+  // tree computation (insertLeafAndGetRoot) uses a non-standard algorithm
+  // that doesn't match Poseidon2IMT. Use the contract's root directly.
   try {
     const [, , contractRoot] = await publicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -237,19 +229,25 @@ async function buildHistoricalRoots(): Promise<void> {
       functionName: "getTreeData",
     });
     const contractRootHex = rootToHex(contractRoot);
-    if (currentRoot === contractRootHex) {
-      console.log(`✓ Computed root matches onchain: ${currentRoot}`);
-    } else {
-      console.error(
-        `✗ ROOT MISMATCH! Computed: ${currentRoot}, Onchain: ${contractRootHex}`
-      );
+    currentRoot = contractRootHex;
+    validRoots.set(contractRootHex, sorted[sorted.length - 1]?.blockNumber ?? 0n);
+    console.log(`✓ Using onchain root: ${contractRootHex}`);
+
+    // Also add the compact root from /tree (standard binary merkle tree)
+    const compactRoot = await computeCompactRoot(treeLeaves);
+    if (compactRoot !== null) {
+      const compactRootHex = rootToHex(compactRoot);
+      if (compactRootHex !== contractRootHex) {
+        validRoots.set(compactRootHex, sorted[sorted.length - 1]?.blockNumber ?? 0n);
+        console.log(`  Compact root: ${compactRootHex}`);
+      }
     }
-  } catch {
-    console.log("Could not verify root against contract (may be empty).");
+  } catch (err) {
+    console.error("Could not fetch onchain root:", err);
   }
 
   console.log(
-    `Built ${validRoots.size} historical roots from ${events.length} events.`
+    `Loaded ${treeLeaves.length} leaves from ${events.length} events.`
   );
 
   // Prune roots outside the validity window
@@ -294,26 +292,28 @@ async function handleNewEvent(event: {
   blockNumber: bigint | null;
 }): Promise<void> {
   if (!event.args.commitment || event.blockNumber === null) return;
-  const root = await insertLeafAndGetRoot(event.args.commitment);
-  const rootHex = rootToHex(root);
-  validRoots.set(rootHex, event.blockNumber);
-  currentRoot = rootHex;
-  if (event.blockNumber > lastProcessedBlock) lastProcessedBlock = event.blockNumber;
 
-  // Also register the compact root that /tree returns — clients generate
-  // proofs against this root (depth=ceil(log2(n))), not the incremental root.
-  const compactRoot = await computeCompactRoot(treeLeaves);
-  if (compactRoot !== null) {
-    const compactRootHex = rootToHex(compactRoot);
-    if (compactRootHex !== rootHex) {
-      validRoots.set(compactRootHex, event.blockNumber);
-    }
+  // Update treeLeaves
+  treeLeaves.push(event.args.commitment);
+  treeSize = treeLeaves.length;
+
+  // Fetch the new onchain root from the contract directly
+  try {
+    const [, , newRoot] = await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: API_CREDITS_ABI,
+      functionName: "getTreeData",
+    });
+    const newRootHex = rootToHex(newRoot);
+    validRoots.set(newRootHex, event.blockNumber);
+    currentRoot = newRootHex;
+    console.log(`New root from event: ${newRootHex}`);
+  } catch (err) {
+    console.error("Failed to fetch new onchain root:", err);
   }
 
-  console.log(`New root: ${rootHex} (block ${event.blockNumber}, index ${event.args.index})`);
-  await pruneOldRoots();
+  if (event.blockNumber > lastProcessedBlock) lastProcessedBlock = event.blockNumber;
 }
-
 function startEventWatcher(): void {
   const eventAbi = parseAbiItem(
     "event CreditRegistered(address indexed user, uint256 indexed index, uint256 commitment, uint256 newStakedBalance)"

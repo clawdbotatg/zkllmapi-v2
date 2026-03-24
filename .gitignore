@@ -21,3 +21,5 @@ node_modules
 
 # cli
 dist
+packages/backend/.env
+packages/proxy/.env

@@ -51,18 +51,10 @@ const AboutPage: NextPage = () => {
               fork it and deploy it for your own token, your own provider, your own chain.
             </p>
             <p className="text-base-content/70 leading-relaxed mb-4">
-              It works, but it has a real limitation: you pay a flat rate per credit and get no refund if your actual
-              API call uses fewer tokens than the budget. The next step is variable-cost, session-scoped API keys with a
-              ZK counter — see{" "}
-              <a
-                href="https://github.com/clawdbotatg/zk-api-credits/issues/12"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-[#42F38F] transition-colors"
-              >
-                issue #12
-              </a>{" "}
-              for the full RFC.
+              v2 fixes the flat-rate problem: 1 credit = 1 conversation = $1.00 balance. You pay once, the balance
+              deducts at actual Venice cost per call. The ZK proof burns once at conversation start — subsequent calls
+              use a bearer token. The next step is a ZK-native circuit counter (no bearer token trust assumption) — v3
+              RFC coming soon.
             </p>
           </section>
 
@@ -222,7 +214,7 @@ const AboutPage: NextPage = () => {
                 </ul>
                 <p className="text-base-content/60 text-xs mt-3">
                   Used by the{" "}
-                  <a href="https://zkllmapi.com/chat" className="underline hover:text-[#42F38F]">
+                  <a href="https://v2.zkllmapi.com/chat" className="underline hover:text-[#42F38F]">
                     web chat interface
                   </a>{" "}
                   and the{" "}
@@ -249,7 +241,7 @@ const AboutPage: NextPage = () => {
                 <p className="text-base-content/60 text-xs mt-3">
                   See{" "}
                   <a
-                    href="https://github.com/clawdbotatg/zk-api-credits/blob/main/SKILL.md"
+                    href="https://github.com/clawdbotatg/zkllmapi-v2/blob/main/SKILL.md"
                     target="_blank"
                     className="underline hover:text-[#42F38F]"
                   >
@@ -449,28 +441,29 @@ fn main(
               Everything is open-source. You can deploy your own instance pointing at any LLM provider.
             </p>
             <div className="bg-base-300 rounded-xl p-4 text-xs font-mono overflow-x-auto mb-4">
-              <pre>{`# Clone both repos
-git clone https://github.com/clawdbotatg/zk-api-credits   # contracts + API server
-git clone https://github.com/clawdbotatg/zk-llm-frontend   # frontend
-cd zk-api-credits
+              <pre>{`# Clone the monorepo
+git clone https://github.com/clawdbotatg/zkllmapi-v2
+cd zkllmapi-v2
+
+# Install dependencies
+yarn install
 
 # Configure
-cp packages/api-server/.env.example packages/api-server/.env
+cp packages/backend/.env.example packages/backend/.env
 # Set: CONTRACT_ADDRESS, VENICE_API_KEY (or any OpenAI-compatible key), RPC_URL
 
 # Compile contracts (Foundry)
 cd packages/contracts && forge build
 
 # Deploy contract (Foundry)
-# See packages/contracts/script/Deploy.s.sol for instructions
+# See packages/foundry/script/Deploy.s.sol for instructions
 
-# Run API server
-docker build -f packages/api-server/Dockerfile -t zk-api-server .
-docker run -p 3001:3001 --env-file packages/api-server/.env zk-api-server
+# Build and run API server
+docker build -f packages/backend/Dockerfile -t zk-v2-backend .
+docker run -p 3001:3001 --env-file packages/backend/.env zk-v2-backend
 
-# Deploy frontend (Vercel)
-cd ../zk-llm-frontend
-NEXT_PUBLIC_API_URL=https://your-server.com vercel deploy`}</pre>
+# Frontend is in packages/nextjs — deploy with Vercel
+NEXT_PUBLIC_API_URL=https://your-server.com yarn vercel --prod`}</pre>
             </div>
           </section>
 
@@ -569,12 +562,8 @@ NEXT_PUBLIC_API_URL=https://your-server.com vercel deploy`}</pre>
                   "Original paper — Vitalik & Davide Crapis",
                   "https://ethresear.ch/t/zk-api-usage-credits-llms-and-beyond/24104",
                 ],
-                ["GitHub — zk-api-credits", "https://github.com/clawdbotatg/zk-api-credits"],
-                ["GitHub — frontend (zkllmapi.com)", "https://github.com/clawdbotatg/zk-llm-frontend"],
-                ["GitHub — API server", "https://github.com/clawdbotatg/zk-api-credits"],
-                ["GitHub — OpenAI-compatible proxy", "https://github.com/clawdbotatg/zkllmapi-proxy"],
-                ["GitHub — CLI tool", "https://github.com/clawdbotatg/zkllmapi-client"],
-                ["Contract address (live)", "https://zkllmapi.com/contract"],
+                ["GitHub — monorepo", "https://github.com/clawdbotatg/zkllmapi-v2"],
+                ["Contract address (live)", "https://backend.v2.zkllmapi.com/contract"],
                 ["Noir language", "https://noir-lang.org"],
                 ["Barretenberg (bb.js)", "https://github.com/AztecProtocol/aztec-packages"],
                 ["CLAWD token", "https://basescan.org/address/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07"],

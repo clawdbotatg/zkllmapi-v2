@@ -394,8 +394,8 @@ const BuyPage: NextPage = () => {
       // live tree and marks unseen commitments as stale (spent: true → balance=0).
       const apiUrl =
         typeof process !== "undefined"
-          ? process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com"
-          : "https://backend.zkllmapi.com";
+          ? process.env.NEXT_PUBLIC_API_URL || "https://backend.v2.zkllmapi.com"
+          : "https://backend.v2.zkllmapi.com";
       const MAX_TREE_POLLS = 30; // 30 × 2s = 60s max wait
       const POLL_INTERVAL_MS = 2000;
 
@@ -842,7 +842,7 @@ const BuyPage: NextPage = () => {
 # the Noir proving circuit into your own script/bot.
 #
 # API endpoint:
-#   POST https://backend.zkllmapi.com/v1/chat
+#   POST https://backend.v2.zkllmapi.com/v1/chat
 #
 # Required body fields:
 #   proof          — hex-encoded Noir proof

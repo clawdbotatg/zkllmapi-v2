@@ -110,6 +110,33 @@ export async function deductToken(
   };
 }
 
+// ─── Conversation Counter (per nullifier hash) ───────────────
+// Tracks how many messages have been sent with a given nullifier.
+// The counter is used as a public input to the ZK circuit so each
+// API call produces a unique nullifier hash.
+
+/**
+ * Get the current counter for a nullifier hash. Returns 0 if not found.
+ */
+export async function getCounter(nullifierHash: string): Promise<number> {
+  const val = await redis.get(`counter:${nullifierHash}`);
+  return val ? parseInt(String(val), 10) : 0;
+}
+
+/**
+ * Initialize the counter for a nullifier hash to 0.
+ */
+export async function createCounter(nullifierHash: string): Promise<void> {
+  await redis.set(`counter:${nullifierHash}`, "0");
+}
+
+/**
+ * Atomically increment the counter and return the new value.
+ */
+export async function incrementCounter(nullifierHash: string): Promise<number> {
+  return await redis.incr(`counter:${nullifierHash}`);
+}
+
 /**
  * Count active (non-expired) tokens. Uses SCAN to avoid blocking.
  */

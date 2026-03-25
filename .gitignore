@@ -23,3 +23,6 @@ node_modules
 dist
 packages/backend/.env
 packages/proxy/.env
+
+# Proxy credit secrets
+packages/proxy/credits.json

@@ -73,6 +73,7 @@ async function sendMessage(
     nullifier_hash: proof.nullifierHashHex,
     root: proof.rootHex,
     depth: proof.depth,
+    counter: proof.counter,
   };
 
   const headers = { "Content-Type": "application/json", ...e2eeHeaders };

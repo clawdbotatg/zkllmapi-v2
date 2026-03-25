@@ -31,6 +31,7 @@ export async function callZkApiStart(
     nullifier_hash: proof.nullifierHashHex,
     root: proof.rootHex,
     depth: proof.depth,
+    counter: proof.counter,
   };
 
   if (options?.model) body.model = options.model;
@@ -106,6 +107,7 @@ export async function callZkApi(
     nullifier_hash: proof.nullifierHashHex,
     root: proof.rootHex,
     depth: proof.depth,
+    counter: proof.counter,
     stream,
   };
 

@@ -11,7 +11,7 @@ import { createPublicClient, http, webSocket, parseAbi, parseAbiItem } from "vie
 import { base } from "viem/chains";
 import { Barretenberg, Fr } from "@aztec/bb.js";
 import { VerifierPool } from "./verifier-pool.js";
-import { createToken, getToken, deductToken } from "./token-store.js";
+import { createToken, getToken, deductToken, getCounter, createCounter, incrementCounter } from "./token-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -464,6 +464,13 @@ app.get("/nullifier/:hash", async (req, res) => {
   res.json({ spent });
 });
 
+// ─── Conversation Counter ──────────────────────────────────────
+// GET /counter/:nullifierHash — returns the current counter for a nullifier hash
+app.get("/counter/:nullifierHash", async (req, res) => {
+  const counter = await getCounter(req.params.nullifierHash);
+  res.json({ counter });
+});
+
 // ─── Contract Info ─────────────────────────────────────────────
 // GET /contract — returns current contract address (for update.sh auto-sync)
 app.get("/contract", (_req, res) => {
@@ -619,11 +626,19 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
     return;
   }
 
-  // ─── Compute nullifier hash ─────────────────────────────
+  // ─── Compute nullifier hash with counter ─────────────────
+  // First compute the base nullifier hash (counter=0) to look up the counter
   const nullifierBigInt = BigInt(nullifier);
-  const nullifierHashFr = await bb.poseidon2Hash([new Fr(nullifierBigInt)]);
+  const baseNullifierHashFr = await bb.poseidon2Hash([new Fr(nullifierBigInt), new Fr(0n)]);
+  const baseNullifierHash = "0x" + BigInt(baseNullifierHashFr.toString()).toString(16).padStart(64, "0");
+
+  // Get the current counter for this nullifier
+  const currentCounter = await getCounter(baseNullifierHash);
+
+  // Compute the actual nullifier hash with the current counter
+  const nullifierHashFr = await bb.poseidon2Hash([new Fr(nullifierBigInt), new Fr(BigInt(currentCounter))]);
   const nullifierHash = "0x" + BigInt(nullifierHashFr.toString()).toString(16).padStart(64, "0");
-  console.log(`[${reqId}] nullifier_hash=${nullifierHash.slice(0, 20)}... (${ts()})`);
+  console.log(`[${reqId}] nullifier_hash=${nullifierHash.slice(0, 20)}... counter=${currentCounter} (${ts()})`);
 
   // ─── Check nullifier not already spent ──────────────────
   if (pendingNullifiers.has(nullifierHash)) {
@@ -705,6 +720,7 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
         nullifier_hash: nullifierHash,
         root: rootHex,
         depth: treeDepth,
+        current_counter: "0x" + BigInt(currentCounter).toString(16).padStart(64, "0"),
         nullifier: "0x" + nullifierBigInt.toString(16).padStart(64, "0"),
         secret: "0x" + BigInt(secret).toString(16).padStart(64, "0"),
         indices: indices,
@@ -731,7 +747,7 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
     const tVerifyStart = Date.now();
     console.log(`[${reqId}] verifying proof (${ts()})`);
     try {
-      const proofValid = await verifyProof(proofHex, nullifierHash, rootHex, treeDepth);
+      const proofValid = await verifyProof(proofHex, nullifierHash, rootHex, treeDepth, currentCounter);
       const verifyMs = Date.now() - tVerifyStart;
       if (!proofValid) {
         console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
@@ -846,9 +862,13 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     nullifier_hash,
     root,
     depth,
+    counter: reqCounter,
     messages,
     encrypted_messages,
   } = req.body;
+
+  // Counter defaults to 0 for backwards compatibility
+  const proofCounter = reqCounter !== undefined ? Number(reqCounter) : 0;
 
   if (req.body.model && req.body.model !== MODEL) {
     console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
@@ -874,7 +894,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     return;
   }
   pendingNullifiers.add(nullifier_hash);
-  console.log(`[${reqId}] nullifier + root checks passed (${ts()})`);
+  console.log(`[${reqId}] nullifier + root checks passed, counter=${proofCounter} (${ts()})`);
 
   try {
     if (validRoots.size === 0) {
@@ -894,7 +914,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     console.log(`[${reqId}] starting proof verification (${ts()})`);
     let proofValid = false;
     try {
-      proofValid = await verifyProof(proof, nullifier_hash, root, depth);
+      proofValid = await verifyProof(proof, nullifier_hash, root, depth, proofCounter);
       const verifyMs = Date.now() - tVerifyStart;
       if (!proofValid) {
         console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
@@ -911,7 +931,8 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     let tokenId: string;
     try {
       tokenId = await createToken(nullifier_hash, root, depth);
-      console.log(`[${reqId}] token created: ${tokenId.slice(0, 16)}... (${ts()})`);
+      await createCounter(nullifier_hash);
+      console.log(`[${reqId}] token created: ${tokenId.slice(0, 16)}..., counter initialized (${ts()})`);
     } catch (tokenError: any) {
       console.error(`[${reqId}] token creation failed:`, tokenError);
       res.status(500).json({ error: "Failed to create conversation token" });
@@ -997,6 +1018,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
       res.json({
         token: tokenId,
         balanceRemaining: tokenData?.balanceRemaining ?? 1.0,
+        counter: 0,
         response: veniceData,
       });
     } catch (veniceError: any) {
@@ -1042,9 +1064,13 @@ app.post("/v1/chat", chatLimiter, async (req, res) => {
     nullifier_hash,
     root,
     depth,
+    counter: reqCounter,
     messages,
     encrypted_messages,
   } = req.body;
+
+  // Counter defaults to 0 for backwards compatibility
+  const proofCounter = reqCounter !== undefined ? Number(reqCounter) : 0;
 
   if (req.body.model && req.body.model !== MODEL) {
     console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
@@ -1118,7 +1144,7 @@ app.post("/v1/chat", chatLimiter, async (req, res) => {
     const tVerifyStart = Date.now();
     console.log(`[${reqId}] starting proof verification (${ts()})`);
     try {
-      const proofValid = await verifyProof(proof, nullifier_hash, root, depth);
+      const proofValid = await verifyProof(proof, nullifier_hash, root, depth, proofCounter);
       const verifyMs = Date.now() - tVerifyStart;
       if (!proofValid) {
         console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
@@ -1273,12 +1299,14 @@ async function verifyProof(
   nullifierHash: string,
   root: string,
   depth: number,
+  counter: number = 0,
 ): Promise<boolean> {
   try {
     const publicInputs = [
       nullifierHash,
       root,
       "0x" + BigInt(depth).toString(16).padStart(64, "0"),
+      "0x" + BigInt(counter).toString(16).padStart(64, "0"),
     ];
     return await verifierPool.verify(proofHex, publicInputs);
   } catch (error) {

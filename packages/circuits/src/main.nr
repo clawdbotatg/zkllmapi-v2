@@ -6,6 +6,7 @@ fn main(
     nullifier_hash: pub Field,
     root: pub Field,
     depth: pub u32,
+    current_counter: pub Field,
 
     // private inputs (never leave client)
     nullifier: Field,
@@ -26,7 +27,7 @@ fn main(
     );
     assert(computed_root == root);
 
-    // 3. Verify nullifier_hash = poseidon2(nullifier)
-    let computed_nullifier_hash = Poseidon2::hash([nullifier], 1);
+    // 3. Verify nullifier_hash = poseidon2(nullifier, current_counter)
+    let computed_nullifier_hash = Poseidon2::hash([nullifier, current_counter], 2);
     assert(computed_nullifier_hash == nullifier_hash);
 }

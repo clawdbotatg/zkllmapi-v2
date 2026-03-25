@@ -39,6 +39,7 @@ contract APICredits is Ownable {
     error APICredits__InsufficientStake();
     error APICredits__CommitmentAlreadyUsed(uint256 commitment);
     error APICredits__EmptyTree();
+    error APICredits__InvalidCounter();
 
     // ─── Constants ────────────────────────────────────────────
     uint256 public constant MAX_DEPTH = 16; // supports up to 65536 leaves
@@ -65,6 +66,9 @@ contract APICredits is Ownable {
     BinaryIMTData public tree;
 
     mapping(uint256 => bool) public commitmentUsed;
+
+    // Conversation counter per nullifier hash — tracks how many messages have been sent
+    mapping(bytes32 => uint256) public conversationCounter;
 
     // ─── Events ───────────────────────────────────────────────
     event Staked(address indexed user, uint256 amount, uint256 newBalance);
@@ -240,6 +244,11 @@ contract APICredits is Ownable {
 
     function isCommitmentUsed(uint256 _commitment) external view returns (bool) {
         return commitmentUsed[_commitment];
+    }
+
+    /// @notice Check if a counter value is valid for a given nullifier hash.
+    function isValidCounter(bytes32 nullifierHash, uint256 counter) external view returns (bool) {
+        return conversationCounter[nullifierHash] == counter;
     }
 
     /// @notice Returns the Poseidon2 zero hash at the given level.

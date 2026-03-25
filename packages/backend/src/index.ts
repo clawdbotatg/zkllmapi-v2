@@ -903,6 +903,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
       return;
     }
     if (!validRoots.has(root)) {
+      console.log(`[${reqId}] root check FAILED — root=${root}, validRoots=[${[...validRoots.keys()].join(", ")}]`);
       res.status(403).json({ error: "Invalid root — not in valid root set" });
       return;
     }
@@ -913,6 +914,13 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
 
     const tVerifyStart = Date.now();
     console.log(`[${reqId}] starting proof verification (${ts()})`);
+    const pubInputs = [
+      nullifier_hash,
+      root,
+      "0x" + BigInt(depth).toString(16).padStart(64, "0"),
+      "0x" + BigInt(proofCounter).toString(16).padStart(64, "0"),
+    ];
+    console.log(`[${reqId}] publicInputs:`, pubInputs.map(p => p.slice(0, 20) + "..."));
     let proofValid = false;
     try {
       proofValid = await verifyProof(proof, nullifier_hash, root, depth, proofCounter);

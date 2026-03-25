@@ -51,9 +51,14 @@ function computeMerklePath(treeData: TreeData, commitment: string) {
 }
 
 export async function generateProof(credit: Credit): Promise<ReadyProof> {
-  console.log("[prove] Fetching Merkle tree...");
-  const treeData: TreeData = await fetch(`${API_URL}/tree`).then((r) => r.json());
+  console.log("[prove] Fetching Merkle tree and contract root...");
+  const [treeData, contractData] = await Promise.all([
+    fetch(`${API_URL}/tree`).then((r) => r.json()),
+    fetch(`${API_URL}/contract`).then((r) => r.json()),
+  ]);
 
+  // Use the contract root — the TypeScript tree may differ from the contract's Poseidon2IMT root
+  const contractRootHex = contractData.root as string;
   const merkleData = computeMerklePath(treeData, credit.commitment);
   if (!merkleData) {
     throw new Error(`Commitment ${credit.commitment} not found in tree. Wait for on-chain sync.`);
@@ -123,7 +128,7 @@ export async function generateProof(credit: Credit): Promise<ReadyProof> {
   await backend.destroy();
 
   const proofHex = "0x" + Buffer.from(proofBytes).toString("hex");
-  const rootHex = "0x" + BigInt(merkleData.root).toString(16).padStart(64, "0");
+  const rootHex = contractRootHex.startsWith("0x") ? contractRootHex : `0x${contractRootHex}`;
   const nullifierHashHex = "0x" + nullifierHashBig.toString(16).padStart(64, "0");
 
   console.log("[prove] ✅ Proof generated!");

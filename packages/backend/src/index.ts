@@ -33,7 +33,8 @@ let zeros: bigint[] = [];
 
 async function precomputeZeros() {
   zeros = new Array(MAX_DEPTH);
-  zeros[0] = 0n;
+  // Poseidon2IMT: zeros[0] = poseidon2(0, 0), zeros[i+1] = poseidon2(zeros[i], zeros[i])
+  zeros[0] = await poseidon2Hash(0n, 0n);
   for (let i = 0; i < MAX_DEPTH - 1; i++) {
     zeros[i + 1] = await poseidon2Hash(zeros[i], zeros[i]);
   }
@@ -220,9 +221,9 @@ async function buildHistoricalRoots(): Promise<void> {
   }
   treeSize = treeLeaves.length;
 
-  // Trust the onchain root from getTreeData() — our local incremental
-  // tree computation (insertLeafAndGetRoot) uses a non-standard algorithm
-  // that doesn't match Poseidon2IMT. Use the contract's root directly.
+  // Use the onchain root — the TypeScript tree builder produces a different
+  // root than Poseidon2IMT (Poseidon2 domain params differ between bb.js
+  // and Solidity). Trust the contract's root for validRoots.
   try {
     const [, , contractRoot] = await publicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -233,16 +234,6 @@ async function buildHistoricalRoots(): Promise<void> {
     currentRoot = contractRootHex;
     validRoots.set(contractRootHex, sorted[sorted.length - 1]?.blockNumber ?? 0n);
     console.log(`✓ Using onchain root: ${contractRootHex}`);
-
-    // Also add the compact root from /tree (standard binary merkle tree)
-    const compactRoot = await computeCompactRoot(treeLeaves);
-    if (compactRoot !== null) {
-      const compactRootHex = rootToHex(compactRoot);
-      if (compactRootHex !== contractRootHex) {
-        validRoots.set(compactRootHex, sorted[sorted.length - 1]?.blockNumber ?? 0n);
-        console.log(`  Compact root: ${compactRootHex}`);
-      }
-    }
   } catch (err) {
     console.error("Could not fetch onchain root:", err);
   }
@@ -472,9 +463,19 @@ app.get("/counter/:nullifierHash", async (req, res) => {
 });
 
 // ─── Contract Info ─────────────────────────────────────────────
-// GET /contract — returns current contract address (for update.sh auto-sync)
-app.get("/contract", (_req, res) => {
-  res.json({ address: CONTRACT_ADDRESS, chainId: 8453 });
+// GET /contract — returns current contract address + onchain root (for update.sh auto-sync)
+app.get("/contract", async (_req, res) => {
+  // Fetch current root from contract (not TypeScript-computed)
+  let rootHex = currentRoot ?? "0";
+  try {
+    const [, , contractRoot] = await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: API_CREDITS_ABI,
+      functionName: "getTreeData",
+    });
+    rootHex = rootToHex(contractRoot);
+  } catch { /* use cached */ }
+  res.json({ address: CONTRACT_ADDRESS, chainId: 8453, root: rootHex });
 });
 
 // ─── Circuit Artifact ──────────────────────────────────────────

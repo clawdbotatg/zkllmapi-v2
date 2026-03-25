@@ -14,7 +14,7 @@ export const PORT = parseInt(process.env.PORT ?? "3100", 10);
 export const BUY_THRESHOLD = parseInt(process.env.BUY_THRESHOLD ?? "3", 10);
 export const BUY_CHUNK = parseInt(process.env.BUY_CHUNK ?? "5", 10);
 
-export const API_URL = "https://backend.zkllmapi.com";
+export const API_URL = process.env.API_URL ?? "https://backend.zkllmapi.com";
 
 export const CONTRACTS = {
   APICredits:   "0x595463222a592416BCbdADb297Bf7D050c09a44E" as `0x${string}`,

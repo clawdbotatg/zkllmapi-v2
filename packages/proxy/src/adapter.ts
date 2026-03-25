@@ -15,13 +15,87 @@ export interface OpenAIChatRequest {
   [key: string]: unknown;
 }
 
+// ─── /v1/chat/start — burns nullifier, creates bearer token, returns first response ───
+export async function callZkApiStart(
+  proof: ReadyProof,
+  messages: OpenAIMessage[],
+  options?: {
+    model?: string;
+    encryptedMessages?: string;
+    e2eeHeaders?: Record<string, string>;
+  }
+): Promise<Response> {
+  const body: Record<string, any> = {
+    proof: proof.proofHex,
+    publicInputs: proof.publicInputs,
+    nullifier_hash: proof.nullifierHashHex,
+    root: proof.rootHex,
+    depth: proof.depth,
+  };
+
+  if (options?.model) body.model = options.model;
+
+  if (options?.encryptedMessages) {
+    body.encrypted_messages = options.encryptedMessages;
+    body.messages = [];
+  } else {
+    body.messages = messages;
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options?.e2eeHeaders) {
+    Object.assign(headers, options.e2eeHeaders);
+  }
+
+  return fetch(`${API_URL}/v1/chat/start`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+// ─── /v1/chat — uses bearer token for ongoing conversation ───
+export async function callZkApiWithToken(
+  token: string,
+  messages: OpenAIMessage[],
+  stream: boolean,
+  options?: {
+    model?: string;
+    encryptedMessages?: string;
+    e2eeHeaders?: Record<string, string>;
+  }
+): Promise<Response> {
+  const body: Record<string, any> = {
+    token,
+    messages,
+    stream,
+  };
+
+  if (options?.model) body.model = options.model;
+
+  if (options?.encryptedMessages) {
+    body.encrypted_messages = options.encryptedMessages;
+    body.messages = [];
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options?.e2eeHeaders) {
+    Object.assign(headers, options.e2eeHeaders);
+  }
+
+  return fetch(`${API_URL}/v1/chat`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
 export async function callZkApi(
   proof: ReadyProof,
   messages: OpenAIMessage[],
   stream: boolean,
   options?: {
     model?: string;
-    // E2EE: if set, messages have been pre-encrypted — send encrypted_messages instead
     encryptedMessages?: string;
     e2eeHeaders?: Record<string, string>;
   }
@@ -38,9 +112,8 @@ export async function callZkApi(
   if (options?.model) body.model = options.model;
 
   if (options?.encryptedMessages) {
-    // E2EE mode: server will forward this blob + headers to Venice blind
     body.encrypted_messages = options.encryptedMessages;
-    body.messages = []; // empty — server must not try to read them
+    body.messages = [];
   } else {
     body.messages = messages;
   }

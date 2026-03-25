@@ -10,7 +10,6 @@ export interface ReadyProof {
   nullifierHashHex: string;
   rootHex: string;
   depth: number;
-  counter: number;
 }
 
 interface TreeData {
@@ -51,14 +50,9 @@ function computeMerklePath(treeData: TreeData, commitment: string) {
 }
 
 export async function generateProof(credit: Credit): Promise<ReadyProof> {
-  console.log("[prove] Fetching Merkle tree and contract root...");
-  const [treeData, contractData] = await Promise.all([
-    fetch(`${API_URL}/tree`).then((r) => r.json()),
-    fetch(`${API_URL}/contract`).then((r) => r.json()),
-  ]);
+  console.log("[prove] Fetching Merkle tree...");
+  const treeData: TreeData = await fetch(`${API_URL}/tree`).then((r) => r.json());
 
-  // Use the contract root — the TypeScript tree may differ from the contract's Poseidon2IMT root
-  const contractRootHex = contractData.root as string;
   const merkleData = computeMerklePath(treeData, credit.commitment);
   if (!merkleData) {
     throw new Error(`Commitment ${credit.commitment} not found in tree. Wait for on-chain sync.`);
@@ -68,27 +62,9 @@ export async function generateProof(credit: Credit): Promise<ReadyProof> {
   console.log("[prove] Initializing Barretenberg...");
   const bb = await Barretenberg.new({ threads: 1 });
 
-  // Fetch the current counter for this nullifier from the server
-  // First compute base nullifier hash (counter=0) to look up counter
+  // Compute nullifier hash = poseidon2([nullifier])
   const nullifierFr = new Fr(BigInt(credit.nullifier));
-  const baseNullifierHashFr = await bb.poseidon2Hash([nullifierFr, new Fr(0n)]);
-  const baseNullifierHashBig = BigInt("0x" + Buffer.from(baseNullifierHashFr.value).toString("hex"));
-  const baseNullifierHashHex = "0x" + baseNullifierHashBig.toString(16).padStart(64, "0");
-
-  let currentCounter = 0;
-  try {
-    const counterRes = await fetch(`${API_URL}/counter/${baseNullifierHashHex}`);
-    if (counterRes.ok) {
-      const counterData = await counterRes.json() as { counter: number };
-      currentCounter = counterData.counter;
-    }
-  } catch {
-    console.warn("[prove] Could not fetch counter, defaulting to 0");
-  }
-  console.log(`[prove] Current counter: ${currentCounter}`);
-
-  // Compute nullifier hash = poseidon2([nullifier, counter])
-  const nullifierHashFr = await bb.poseidon2Hash([nullifierFr, new Fr(BigInt(currentCounter))]);
+  const nullifierHashFr = await bb.poseidon2Hash([nullifierFr]);
   const nullifierHashBig = BigInt("0x" + Buffer.from(nullifierHashFr.value).toString("hex"));
 
   await bb.destroy();
@@ -114,7 +90,6 @@ export async function generateProof(credit: Credit): Promise<ReadyProof> {
     nullifier_hash: nullifierHashBig.toString(),
     root: merkleData.root,
     depth: merkleData.depth.toString(),
-    current_counter: currentCounter.toString(),
     nullifier: credit.nullifier,
     secret: credit.secret,
     indices: paddedIndices,
@@ -128,11 +103,11 @@ export async function generateProof(credit: Credit): Promise<ReadyProof> {
   await backend.destroy();
 
   const proofHex = "0x" + Buffer.from(proofBytes).toString("hex");
-  const rootHex = contractRootHex.startsWith("0x") ? contractRootHex : `0x${contractRootHex}`;
+  const rootHex = "0x" + BigInt(merkleData.root).toString(16).padStart(64, "0");
   const nullifierHashHex = "0x" + nullifierHashBig.toString(16).padStart(64, "0");
 
   console.log("[prove] ✅ Proof generated!");
-  return { commitment: credit.commitment, proofHex, publicInputs, nullifierHashHex, rootHex, depth: merkleData.depth, counter: currentCounter };
+  return { commitment: credit.commitment, proofHex, publicInputs, nullifierHashHex, rootHex, depth: merkleData.depth };
 }
 
 export async function preWarm(allCredits: Credit[]): Promise<void> {

@@ -748,7 +748,7 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
     const tVerifyStart = Date.now();
     console.log(`[${reqId}] verifying proof (${ts()})`);
     try {
-      const proofValid = await verifyProof(proofHex, nullifierHash, rootHex, treeDepth, currentCounter);
+      const proofValid = await verifyProof(proofHex, nullifierHash, rootHex, treeDepth);
       const verifyMs = Date.now() - tVerifyStart;
       if (!proofValid) {
         console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
@@ -923,7 +923,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     console.log(`[${reqId}] publicInputs:`, pubInputs.map(p => p.slice(0, 20) + "..."));
     let proofValid = false;
     try {
-      proofValid = await verifyProof(proof, nullifier_hash, root, depth, proofCounter);
+      proofValid = await verifyProof(proof, nullifier_hash, root, depth);
       const verifyMs = Date.now() - tVerifyStart;
       if (!proofValid) {
         console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
@@ -1153,7 +1153,7 @@ app.post("/v1/chat", chatLimiter, async (req, res) => {
     const tVerifyStart = Date.now();
     console.log(`[${reqId}] starting proof verification (${ts()})`);
     try {
-      const proofValid = await verifyProof(proof, nullifier_hash, root, depth, proofCounter);
+      const proofValid = await verifyProof(proof, nullifier_hash, root, depth);
       const verifyMs = Date.now() - tVerifyStart;
       if (!proofValid) {
         console.log(`[${reqId}] proof INVALID — ${verifyMs}ms`);
@@ -1308,14 +1308,12 @@ async function verifyProof(
   nullifierHash: string,
   root: string,
   depth: number,
-  counter: number = 0,
 ): Promise<boolean> {
   try {
     const publicInputs = [
       nullifierHash,
       root,
       "0x" + BigInt(depth).toString(16).padStart(64, "0"),
-      "0x" + BigInt(counter).toString(16).padStart(64, "0"),
     ];
     return await verifierPool.verify(proofHex, publicInputs);
   } catch (error) {

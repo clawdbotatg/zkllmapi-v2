@@ -1,35 +1,30 @@
 import "@rainbow-me/rainbowkit/styles.css";
 import "@scaffold-ui/components/styles.css";
-import { ScaffoldEthAppWithProviders } from "~~/components/ScaffoldEthAppWithProviders";
+import { AppShell } from "~~/components/AppShell";
 import { ThemeProvider } from "~~/components/ThemeProvider";
 import "~~/styles/globals.css";
+import { getMetadata } from "~~/utils/scaffold-eth/getMetadata";
 
-export const metadata = {
-  title: "ZK LLM API — Private AI via ZK Proofs",
-  description: "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
-  openGraph: {
-    title: "ZK LLM API — Private AI via ZK Proofs",
-    description: "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
-    images: [{ url: "https://v2.zkllmapi.com/thumbnail.jpg" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "ZK LLM API — Private AI via ZK Proofs",
-    description: "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
-    images: ["https://v2.zkllmapi.com/thumbnail.jpg"],
-  },
+export const viewport = {
+  width: "device-width",
+  initialScale: 0.8,
 };
 
-const ScaffoldEthApp = ({ children }: { children: React.ReactNode }) => {
+export const metadata = getMetadata({
+  title: "ZK LLM API — Private AI via ZK Proofs",
+  description: "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
+});
+
+const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <html suppressHydrationWarning className={``}>
+    <html suppressHydrationWarning>
       <body>
         <ThemeProvider enableSystem>
-          <ScaffoldEthAppWithProviders>{children}</ScaffoldEthAppWithProviders>
+          <AppShell>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>
   );
 };
 
-export default ScaffoldEthApp;
+export default RootLayout;

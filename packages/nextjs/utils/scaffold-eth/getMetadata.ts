@@ -1,11 +1,9 @@
-
 import type { Metadata } from "next";
-
 
 const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
   ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
   : `http://localhost:${process.env.PORT || 3000}`;
-const titleTemplate = "%s | Scaffold-ETH 2";
+const titleTemplate = "%s | ZK LLM API";
 
 export const getMetadata = ({
   title,
@@ -19,42 +17,47 @@ export const getMetadata = ({
   const imageUrl = `${baseUrl}${imageRelativePath}`;
 
   return {
-  metadataBase: new URL(baseUrl),
-  title: {
-    default: title,
-    template: titleTemplate
-  },
-  description: description,
-  openGraph: {
+    metadataBase: new URL(baseUrl),
     title: {
       default: title,
-      template: titleTemplate
+      template: titleTemplate,
     },
     description: description,
-    images: [
-      {
-        url: imageUrl
-      }
-    ]
-  },
-  twitter: {
-    title: {
-      default: title,
-      template: titleTemplate
+    openGraph: {
+      title: {
+        default: title,
+        template: titleTemplate,
+      },
+      description: description,
+      images: [
+        {
+          url: imageUrl,
+        },
+      ],
     },
-    description: description,
-    images: [
-      imageUrl
-    ]
-  },
-  icons: {
-    icon: [
-      {
-        url: '/favicon.png',
-        sizes: '32x32',
-        type: 'image/png'
-      }
-    ]
-  }
+    twitter: {
+      title: {
+        default: title,
+        template: titleTemplate,
+      },
+      description: description,
+      images: [imageUrl],
+    },
+    icons: {
+      icon: [
+        {
+          url: "/favicon.png",
+          sizes: "32x32",
+          type: "image/png",
+        },
+      ],
+      apple: [
+        {
+          url: "/icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+        },
+      ],
+    },
+  };
 };
-}

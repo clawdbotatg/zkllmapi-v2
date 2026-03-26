@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { NextPage } from "next";
 import externalContracts from "~~/contracts/externalContracts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.v2.v2.zkllmapi.com";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
 // ⚠️ Use addresses from externalContracts — NEVER hardcode stale addresses
 const API_CREDITS_ADDRESS = externalContracts[8453].APICredits.address;
@@ -26,15 +26,15 @@ const ChatMessage = {
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 // System prompt injected into every conversation so the model knows about ZK LLM API
-const SYSTEM_PROMPT = `You are running inside the ZK LLM API chat interface at v2.zkllmapi.com — a private, anonymous LLM API powered by zero-knowledge proofs on Base mainnet.
+const SYSTEM_PROMPT = `You are running inside the ZK LLM API chat interface at zkllmapi.com — a private, anonymous LLM API powered by zero-knowledge proofs on Base mainnet.
 
 Key facts about this project:
 - Model: zai-org-glm-5 (Z.AI's flagship, 198K context, reasoning-capable)
 - Hash function: Poseidon2 (ZK-friendly, used for Merkle tree and nullifier hashing)
 - How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to call the API anonymously. The ZK proof breaks the link between the paying wallet and the API call.
-- Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each credit starts one conversation (bearer token with $1.00 balance).
+- Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each credit is single-use (nullifier is burned after one API call).
 - Contract addresses (Base mainnet): APICredits=0x5954..., CLAWDPricing=0x445D..., CLAWDRouter=0xCB42..., CLAWD token=0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07
-- Website: https://v2.zkllmapi.com | GitHub: https://github.com/clawdbotatg/zkllmapi-v2
+- Website: https://zkllmapi.com | GitHub: https://github.com/clawdbotatg/zk-api-credits
 
 Answer questions about this project accurately. If asked about hash functions, cryptography, ZK proofs, or how the system works, explain clearly.`;
 

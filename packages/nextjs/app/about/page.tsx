@@ -214,7 +214,7 @@ const AboutPage: NextPage = () => {
                 </ul>
                 <p className="text-base-content/60 text-xs mt-3">
                   Used by the{" "}
-                  <a href="https://v2.zkllmapi.com/chat" className="underline hover:text-[#42F38F]">
+                  <a href="https://zkllmapi.com/chat" className="underline hover:text-[#42F38F]">
                     web chat interface
                   </a>{" "}
                   and the{" "}
@@ -563,7 +563,7 @@ NEXT_PUBLIC_API_URL=https://your-server.com yarn vercel --prod`}</pre>
                   "https://ethresear.ch/t/zk-api-usage-credits-llms-and-beyond/24104",
                 ],
                 ["GitHub — monorepo", "https://github.com/clawdbotatg/zkllmapi-v2"],
-                ["Contract address (live)", "https://backend.v2.zkllmapi.com/contract"],
+                ["Contract address (live)", "https://backend.zkllmapi.com/contract"],
                 ["Noir language", "https://noir-lang.org"],
                 ["Barretenberg (bb.js)", "https://github.com/AztecProtocol/aztec-packages"],
                 ["CLAWD token", "https://basescan.org/address/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07"],

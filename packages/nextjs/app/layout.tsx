@@ -3,12 +3,11 @@ import "@scaffold-ui/components/styles.css";
 import { ScaffoldEthAppWithProviders } from "~~/components/ScaffoldEthAppWithProviders";
 import { ThemeProvider } from "~~/components/ThemeProvider";
 import "~~/styles/globals.css";
-import { getMetadata } from "~~/utils/scaffold-eth/getMetadata";
 
-export const metadata = getMetadata({
-  title: "ZK LLM API",
-  description: "Private, anonymous LLM API access using zero-knowledge proofs. No wallet. No API key. No identity.",
-});
+export const metadata = {
+  title: "ZK LLM API — Private AI via ZK Proofs",
+  description: "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
+};
 
 const ScaffoldEthApp = ({ children }: { children: React.ReactNode }) => {
   return (

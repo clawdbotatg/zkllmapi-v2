@@ -7,7 +7,7 @@ import { formatEther } from "viem";
 import { useReadContract } from "wagmi";
 import externalContracts from "~~/contracts/externalContracts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.v2.zkllmapi.com";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
 const Home: NextPage = () => {
   const [spentCount, setSpentCount] = useState<number | null>(null);
@@ -155,7 +155,7 @@ const Home: NextPage = () => {
               <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Buy a credit at zkllmapi.com/buy — it gives you a one-time API key.
 # The server generates the ZK proof for you. No circuit setup needed.
 
-curl -X POST https://backend.v2.zkllmapi.com/v1/chat/key \\
+curl -X POST https://backend.zkllmapi.com/v1/chat/key \\
   -H 'Content-Type: application/json' \\
   -d '{
     "apiKey": "zk-llm-{base64url(\\"nullifier:secret:commitment\\")}",

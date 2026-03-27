@@ -19,8 +19,8 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
-const TOKEN_TTL_SECONDS = 86400; // 24 hours
-const INITIAL_BALANCE = 1.0; // USD
+export const TOKEN_TTL_SECONDS = 86400; // 24 hours
+export const INITIAL_BALANCE = 1.0; // USD
 
 export interface TokenData {
   balanceRemaining: number;
@@ -81,18 +81,24 @@ export async function getToken(tokenId: string): Promise<TokenData | null> {
   };
 }
 
+export interface DeductResult extends TokenData {
+  conversationEnded: boolean;
+}
+
 /**
  * Deduct cost from a token's balance. Updates lastUsed.
- * Returns the updated TokenData, or null if token not found or insufficient balance.
+ * Allows overshoot on the final call — if balance < cost, the call still
+ * succeeds but balance drops to $0 and conversationEnded is set.
+ * Returns null only if the token is not found or balance is already 0.
  */
 export async function deductToken(
   tokenId: string,
   costUsd: number,
-): Promise<TokenData | null> {
+): Promise<DeductResult | null> {
   const token = await getToken(tokenId);
   if (!token) return null;
 
-  if (token.balanceRemaining < costUsd) return null;
+  if (token.balanceRemaining <= 0) return null;
 
   const newBalance = Math.max(0, token.balanceRemaining - costUsd);
   const now = Date.now();
@@ -107,6 +113,7 @@ export async function deductToken(
     ...token,
     balanceRemaining: newBalance,
     lastUsed: now,
+    conversationEnded: newBalance <= 0,
   };
 }
 

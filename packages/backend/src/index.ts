@@ -11,7 +11,7 @@ import { createPublicClient, http, webSocket, parseAbi, parseAbiItem } from "vie
 import { base } from "viem/chains";
 import { Barretenberg, Fr } from "@aztec/bb.js";
 import { VerifierPool } from "./verifier-pool.js";
-import { createToken, getToken, deductToken, getCounter, createCounter, incrementCounter } from "./token-store.js";
+import { createToken, getToken, deductToken, getCounter, createCounter, incrementCounter, TOKEN_TTL_SECONDS, INITIAL_BALANCE } from "./token-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -398,13 +398,27 @@ async function migrateNullifiersFromFile(): Promise<number> {
 // ─── Model (locked for demo — one credit, one model) ─────────
 const MODEL = process.env.VENICE_MODEL || "zai-org-glm-5";
 
+// ─── Venice Pricing (zai-org-glm-5) ──────────────────────────
+const INPUT_PRICE_PER_TOKEN = 1.00 / 1_000_000;   // $1.00 per 1M input tokens
+const OUTPUT_PRICE_PER_TOKEN = 3.20 / 1_000_000;   // $3.20 per 1M output tokens
+const MAX_COST_USD = 0.05;
+const COST_MULTIPLIER = parseFloat(process.env.COST_MULTIPLIER || "1.0");
+
+function computeVeniceCost(usage: { prompt_tokens?: number; completion_tokens?: number }): number {
+  const inputCost = (usage.prompt_tokens ?? 0) * INPUT_PRICE_PER_TOKEN;
+  const outputCost = (usage.completion_tokens ?? 0) * OUTPUT_PRICE_PER_TOKEN;
+  return (inputCost + outputCost) * COST_MULTIPLIER;
+}
+
 // ─── Express App ──────────────────────────────────────────────
 const app = express();
 
 // Trust proxy headers (required for correct IP detection behind AWS/Cloudflare)
 app.set("trust proxy", 1);
 
-app.use(cors());
+app.use(cors({
+  exposedHeaders: ["x-conversation-balance", "x-conversation-ended"],
+}));
 app.use(express.json({ limit: "1mb" }));
 
 // ─── Rate Limiting ────────────────────────────────────────────
@@ -414,6 +428,15 @@ app.use(express.json({ limit: "1mb" }));
 const chatLimiter = rateLimit({
   windowMs: 60_000,           // 1-minute rolling window
   max: parseInt(process.env.RATE_LIMIT_CHAT || "10"),  // 10 req/min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests — please wait a moment and try again" },
+});
+
+// Lighter limiter for token-based chat (no ZK verification CPU cost)
+const tokenLimiter = rateLimit({
+  windowMs: 60_000,
+  max: parseInt(process.env.RATE_LIMIT_TOKEN || "30"),  // 30 req/min per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests — please wait a moment and try again" },
@@ -948,74 +971,14 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
       return;
     }
 
-    const tVeniceStart = Date.now();
     console.log(`[${reqId}] calling Venice (${ts()})${isE2EE ? " [E2EE 🔒]" : ""}`);
     try {
-      const veniceHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${VENICE_API_KEY}`,
-      };
-      const e2eeHeaderNames = ["x-venice-tee-client-pub-key", "x-venice-tee-model-pub-key", "x-venice-tee-signing-algo"];
-      for (const h of e2eeHeaderNames) {
-        const val = req.headers[h] as string | undefined;
-        if (val) veniceHeaders[h] = val;
-      }
-
-      const MAX_COST_USD = 0.05;
-      const INPUT_PRICE_PER_TOKEN = 1.00 / 1_000_000;
-      let estimatedInputBytes: number;
-      if (isE2EE && encrypted_messages) {
-        estimatedInputBytes = Buffer.byteLength(typeof encrypted_messages === "string" ? encrypted_messages : JSON.stringify(encrypted_messages), "utf8");
-      } else {
-        estimatedInputBytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
-      }
-      const estimatedInputTokens = Math.ceil(estimatedInputBytes / 4);
-      const estimatedInputCost = estimatedInputTokens * INPUT_PRICE_PER_TOKEN;
-
-      if (estimatedInputCost > MAX_COST_USD) {
-        const maxBytes = Math.floor((MAX_COST_USD / INPUT_PRICE_PER_TOKEN) * 4);
-        res.status(400).json({ error: `Request too large — max ~${maxBytes.toLocaleString()} bytes ($${MAX_COST_USD} budget)` });
-        return;
-      }
-
-      const veniceBody: Record<string, any> = { model: MODEL, stream: false };
-      if (isE2EE) {
-        veniceBody.encrypted_messages = encrypted_messages;
-        veniceBody.messages = [];
-      } else {
-        veniceBody.messages = messages;
-      }
-
-      const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
-      const veniceResponse = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: veniceHeaders,
-        body: JSON.stringify(veniceBody),
-        signal: AbortSignal.timeout(VENICE_TIMEOUT_MS),
-      });
-
-      const veniceMs = Date.now() - tVeniceStart;
-
-      if (!veniceResponse.ok) {
-        const errorText = await veniceResponse.text();
-        console.error(`[${reqId}] Venice error ${veniceResponse.status} — ${veniceMs}ms:`, errorText);
-        res.status(502).json({ error: "Venice API error", status: veniceResponse.status });
-        return;
-      }
-
-      const veniceData = await veniceResponse.json();
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
       const totalMs = Date.now() - t0;
 
-      let costUsd = 0;
-      const usage = veniceData?.usage;
-      if (usage?.prompt_tokens) {
-        const inputCost = (usage.prompt_tokens / 1_000_000) * INPUT_PRICE_PER_TOKEN;
-        const outputCost = ((usage.completion_tokens || 0) / 1_000_000) * (3.20 / 1_000_000);
-        costUsd = inputCost + outputCost;
-      }
       if (costUsd > 0) {
         await deductToken(tokenId, costUsd);
-        console.log(`[${reqId}] deducted $${costUsd.toFixed(4)} from token`);
+        console.log(`[${reqId}] deducted $${costUsd.toFixed(6)} from token`);
       }
 
       await saveNullifier(nullifier_hash);
@@ -1027,15 +990,17 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
       res.json({
         token: tokenId,
         balanceRemaining: tokenData?.balanceRemaining ?? 1.0,
-        counter: 0,
+        expiresAt: Date.now() + TOKEN_TTL_SECONDS * 1000,
         response: veniceData,
       });
     } catch (veniceError: any) {
-      const veniceMs = Date.now() - tVeniceStart;
+      const statusCode = veniceError.statusCode || 500;
       const isTimeout = veniceError?.name === "TimeoutError" || veniceError?.name === "AbortError";
       if (isTimeout) {
-        console.error(`[${reqId}] Venice timed out after ${veniceMs}ms`);
+        console.error(`[${reqId}] Venice timed out — nullifier NOT burned, safe to retry`);
         res.status(504).json({ error: "Venice API timed out — nullifier NOT burned, safe to retry" });
+      } else if (statusCode === 400 || statusCode === 502) {
+        res.status(statusCode).json({ error: veniceError.message });
       } else {
         console.error(`[${reqId}] Venice request failed:`, veniceError);
         res.status(502).json({ error: "Failed to reach Venice API", details: veniceError.message });
@@ -1051,105 +1016,229 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
 });
 
 /**
- * Main API endpoint — verify proof + proxy to Venice
- *
- * POST /v1/chat
- * {
- *   "proof": "<hex string>",
- *   "nullifier_hash": "0x...",
- *   "root": "0x...",
- *   "depth": <fetch from /tree — changes as tree grows>,
- *   "messages": [{ "role": "user", "content": "..." }],
- * }
+ * Extract bearer token from Authorization header or request body.
  */
-app.post("/v1/chat", chatLimiter, async (req, res) => {
+function extractBearerToken(req: express.Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  if (req.body?.token && typeof req.body.token === "string") {
+    return req.body.token;
+  }
+  return null;
+}
+
+/**
+ * Call Venice and return the response data.
+ * Shared between token-based and proof-based flows.
+ */
+async function callVenice(
+  req: express.Request,
+  reqId: string,
+  messages: any,
+  encrypted_messages: any,
+  isE2EE: boolean,
+): Promise<{ veniceData: any; costUsd: number; veniceMs: number }> {
+  const veniceHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${VENICE_API_KEY}`,
+  };
+  const e2eeHeaderNames = [
+    "x-venice-tee-client-pub-key",
+    "x-venice-tee-model-pub-key",
+    "x-venice-tee-signing-algo",
+  ];
+  for (const h of e2eeHeaderNames) {
+    const val = req.headers[h] as string | undefined;
+    if (val) veniceHeaders[h] = val;
+  }
+
+  let estimatedInputBytes: number;
+  if (isE2EE && encrypted_messages) {
+    estimatedInputBytes = Buffer.byteLength(
+      typeof encrypted_messages === "string" ? encrypted_messages : JSON.stringify(encrypted_messages),
+      "utf8"
+    );
+  } else {
+    estimatedInputBytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
+  }
+  const estimatedInputTokens = Math.ceil(estimatedInputBytes / 4);
+  const estimatedInputCost = estimatedInputTokens * INPUT_PRICE_PER_TOKEN;
+
+  if (estimatedInputCost > MAX_COST_USD) {
+    const maxBytes = Math.floor((MAX_COST_USD / INPUT_PRICE_PER_TOKEN) * 4);
+    throw Object.assign(
+      new Error(`Request too large — max ~${maxBytes.toLocaleString()} bytes ($${MAX_COST_USD} budget)`),
+      { statusCode: 400 },
+    );
+  }
+
+  const veniceBody: Record<string, any> = { model: MODEL, stream: false };
+  if (isE2EE) {
+    veniceBody.encrypted_messages = encrypted_messages;
+    veniceBody.messages = [];
+  } else {
+    veniceBody.messages = messages;
+  }
+
+  const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
+  const tStart = Date.now();
+  const veniceResponse = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: veniceHeaders,
+    body: JSON.stringify(veniceBody),
+    signal: AbortSignal.timeout(VENICE_TIMEOUT_MS),
+  });
+  const veniceMs = Date.now() - tStart;
+
+  if (!veniceResponse.ok) {
+    const errorText = await veniceResponse.text();
+    console.error(`[${reqId}] Venice error ${veniceResponse.status} — ${veniceMs}ms:`, errorText);
+    throw Object.assign(new Error("Venice API error"), { statusCode: 502 });
+  }
+
+  const veniceData = await veniceResponse.json();
+  const costUsd = veniceData?.usage ? computeVeniceCost(veniceData.usage) : 0;
+
+  return { veniceData, costUsd, veniceMs };
+}
+
+/**
+ * POST /v1/chat — Conversation continuation (bearer token) or legacy proof-based call
+ *
+ * Bearer token flow (conversation credits):
+ *   Authorization: Bearer <token>  (or { "token": "<token>" } in body)
+ *   { "messages": [...] }
+ *
+ * Legacy proof flow (backwards compatible):
+ *   { "proof": "0x...", "nullifier_hash": "0x...", "root": "0x...", "depth": N, "messages": [...] }
+ */
+app.post("/v1/chat", tokenLimiter, async (req, res) => {
   const reqId = Math.random().toString(36).slice(2, 8);
   const t0 = Date.now();
   const ts = () => `+${Date.now() - t0}ms`;
-  console.log(`[${reqId}] POST /v1/chat — received`);
+
+  // ─── Check for bearer token (conversation continuation) ───
+  const bearerToken = extractBearerToken(req);
+
+  if (bearerToken) {
+    // ─── Token-based flow: no ZK proof needed ───────────────
+    console.log(`[${reqId}] POST /v1/chat [token] — ${bearerToken.slice(0, 16)}...`);
+
+    const { messages, encrypted_messages } = req.body;
+    const isE2EE = !!encrypted_messages;
+
+    if (!isE2EE && (!messages || !Array.isArray(messages))) {
+      res.status(400).json({ error: "Missing required field: messages" });
+      return;
+    }
+
+    const tokenData = await getToken(bearerToken);
+    if (!tokenData) {
+      console.log(`[${reqId}] token not found or expired (${ts()})`);
+      res.status(401).json({ error: "Invalid or expired conversation token" });
+      return;
+    }
+    if (tokenData.balanceRemaining <= 0) {
+      console.log(`[${reqId}] token balance depleted (${ts()})`);
+      res.status(402).json({ error: "Conversation balance depleted — start a new conversation" });
+      return;
+    }
+    console.log(`[${reqId}] token valid, balance: $${tokenData.balanceRemaining.toFixed(6)} (${ts()})`);
+
+    try {
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
+
+      let balanceRemaining = tokenData.balanceRemaining;
+      let conversationEnded = false;
+
+      if (costUsd > 0) {
+        const result = await deductToken(bearerToken, costUsd);
+        if (result) {
+          balanceRemaining = result.balanceRemaining;
+          conversationEnded = result.conversationEnded;
+        }
+        console.log(`[${reqId}] deducted $${costUsd.toFixed(6)}, remaining: $${balanceRemaining.toFixed(6)}${conversationEnded ? " [ENDED]" : ""}`);
+      }
+
+      res.setHeader("x-conversation-balance", balanceRemaining.toString());
+      if (conversationEnded) {
+        res.setHeader("x-conversation-ended", "true");
+      }
+
+      const totalMs = Date.now() - t0;
+      console.log(`[${reqId}] ✅ done [token] — Venice: ${veniceMs}ms | total: ${totalMs}ms`);
+      res.json(veniceData);
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      const isTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+      if (isTimeout) {
+        console.error(`[${reqId}] Venice timed out — balance NOT deducted`);
+        res.status(504).json({ error: "Venice API timed out — please retry" });
+      } else if (statusCode === 400 || statusCode === 502) {
+        res.status(statusCode).json({ error: error.message });
+      } else {
+        console.error(`[${reqId}] unexpected error (${ts()}):`, error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    return;
+  }
+
+  // ─── Legacy proof-based flow (backwards compatible) ───────
+  console.log(`[${reqId}] POST /v1/chat [proof] — received`);
 
   const {
     proof,
     nullifier_hash,
     root,
     depth,
-    counter: reqCounter,
     messages,
     encrypted_messages,
   } = req.body;
-
-  // Counter defaults to 0 for backwards compatibility
-  const proofCounter = reqCounter !== undefined ? Number(reqCounter) : 0;
 
   if (req.body.model && req.body.model !== MODEL) {
     console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
   }
 
-  // E2EE mode: encrypted_messages replaces messages
   const isE2EE = !!encrypted_messages;
 
-  // ─── Input Validation ───────────────────────────────────
   if (!proof || !nullifier_hash || !root || depth === undefined) {
-    res.status(400).json({
-      error: "Missing required fields: proof, nullifier_hash, root, depth",
-    });
+    res.status(400).json({ error: "Missing required fields: proof, nullifier_hash, root, depth (or provide a bearer token)" });
     return;
   }
   if (!isE2EE && (!messages || !Array.isArray(messages))) {
-    res.status(400).json({
-      error: "Missing required field: messages (or encrypted_messages for E2EE)",
-    });
+    res.status(400).json({ error: "Missing required field: messages (or encrypted_messages for E2EE)" });
     return;
   }
 
-  // ─── Double-spend protection ──────────────────────────────────
-  // pendingNullifiers is checked first (sync) to catch concurrent in-flight requests.
-  // Redis SISMEMBER is the durable spent check (survives restarts).
   if (pendingNullifiers.has(nullifier_hash)) {
-    console.log(`[${reqId}] nullifier already pending (${ts()})`);
     res.status(429).json({ error: "This nullifier is currently being processed — try again in a moment" });
     return;
   }
   if (await isNullifierSpent(nullifier_hash)) {
-    console.log(`[${reqId}] nullifier already spent (${ts()})`);
     res.status(403).json({ error: "Nullifier already spent" });
-    return;
-  }
-  if (pendingNullifiers.has(nullifier_hash)) {
-    console.log(`[${reqId}] nullifier already pending (${ts()})`);
-    res.status(429).json({ error: "This nullifier is currently being processed — try again in a moment" });
     return;
   }
   pendingNullifiers.add(nullifier_hash);
   console.log(`[${reqId}] nullifier + root checks passed (${ts()})`);
 
   try {
-    // ─── Verify root is in the valid historical set ─────────
-    console.log(`[${reqId}] root check: validRoots.size=${validRoots.size}, checking root=${root.slice(0, 20)}... (${ts()})`);
     if (validRoots.size === 0) {
-      console.log(`[${reqId}] no valid roots (${ts()})`);
       res.status(403).json({ error: "No commitments registered yet" });
       return;
     }
     if (!validRoots.has(root)) {
-      console.log(`[${reqId}] root not in valid set (${ts()})`);
-      res.status(403).json({
-        error: "Invalid root — not in valid root set (may be expired or incorrect)",
-      });
+      res.status(403).json({ error: "Invalid root — not in valid root set (may be expired or incorrect)" });
       return;
     }
-    console.log(`[${reqId}] root valid ✅ (${ts()})`);
 
-    // ─── Queue depth guard ─────────────────────────────────
-    // Reject early if all verifier workers are busy — prevents unbounded
-    // queue pile-up that would delay legitimate requests indefinitely.
     if (verifierPool.activeCount >= verifierPool.size) {
-      console.log(`[${reqId}] verifier pool full (${verifierPool.activeCount}/${verifierPool.size}) — rejecting (${ts()})`);
       res.status(503).json({ error: "Server busy — all verifier workers occupied, please retry in a moment" });
       return;
     }
 
-    // ─── Verify ZK proof ───────────────────────────────────
     const tVerifyStart = Date.now();
     console.log(`[${reqId}] starting proof verification (${ts()})`);
     try {
@@ -1164,135 +1253,36 @@ app.post("/v1/chat", chatLimiter, async (req, res) => {
     } catch (verifyError: any) {
       const verifyMs = Date.now() - tVerifyStart;
       console.error(`[${reqId}] proof verification threw — ${verifyMs}ms:`, verifyError);
-      res.status(403).json({
-        error: "Proof verification failed",
-        details: verifyError.message,
-      });
+      res.status(403).json({ error: "Proof verification failed", details: verifyError.message });
       return;
     }
 
-    // ─── Forward to Venice API ──────────────────────────────
-    const tVeniceStart = Date.now();
-    console.log(`[${reqId}] calling Venice (${ts()})${isE2EE ? " [E2EE 🔒 — forwarding blind]" : ""}`);
     try {
-      // Pass E2EE headers from client through to Venice if present
-      const veniceHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${VENICE_API_KEY}`,
-      };
-      const e2eeHeaderNames = [
-        "x-venice-tee-client-pub-key",
-        "x-venice-tee-model-pub-key",
-        "x-venice-tee-signing-algo",
-      ];
-      for (const h of e2eeHeaderNames) {
-        const val = req.headers[h] as string | undefined;
-        if (val) veniceHeaders[h] = val;
-      }
-
-      // ─── Cost cap: reject if estimated Venice cost > $0.05 ─────
-      // zai-org-glm-5: $1.00/1M input, $3.20/1M output (Private — Venice auto E2EE)
-      // Estimate input tokens conservatively at 1 token per 4 bytes.
-      const MAX_COST_USD = 0.05;
-      const INPUT_PRICE_PER_TOKEN = 1.00 / 1_000_000; // $1.00 per 1M tokens
-
-      let estimatedInputBytes: number;
-      if (isE2EE && encrypted_messages) {
-        estimatedInputBytes = Buffer.byteLength(
-          typeof encrypted_messages === "string" ? encrypted_messages : JSON.stringify(encrypted_messages),
-          "utf8"
-        );
-      } else {
-        estimatedInputBytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
-      }
-      const estimatedInputTokens = Math.ceil(estimatedInputBytes / 4);
-      const estimatedInputCost = estimatedInputTokens * INPUT_PRICE_PER_TOKEN;
-
-      if (estimatedInputCost > MAX_COST_USD) {
-        const maxBytes = Math.floor((MAX_COST_USD / INPUT_PRICE_PER_TOKEN) * 4);
-        console.log(`[${reqId}] request too large — estimated $${estimatedInputCost.toFixed(4)}, cap $${MAX_COST_USD} (${estimatedInputBytes} bytes → ~${estimatedInputTokens} tokens)`);
-        res.status(400).json({
-          error: `Request too large — max ~${maxBytes.toLocaleString()} bytes ($${MAX_COST_USD} budget at zai-org-glm-5 pricing)`,
-          detail: `Estimated cost $${estimatedInputCost.toFixed(4)} exceeds $${MAX_COST_USD} cap. Try shortening or splitting your messages.`,
-        });
-        return;
-      }
-      console.log(`[${reqId}] cost estimate: $${estimatedInputCost.toFixed(4)} (${estimatedInputBytes} bytes → ~${estimatedInputTokens} tokens) ✅`);
-
-      // ─── Build Venice request body ────────────────────────────
-      // NOTE: always stream: false — server does veniceResponse.json(), not SSE piping
-      const veniceBody: Record<string, any> = {
-        model: MODEL,
-        stream: false,
-      };
-      if (isE2EE) {
-        // E2EE: forward encrypted blob, Venice TEE will decrypt
-        veniceBody.encrypted_messages = encrypted_messages;
-        veniceBody.messages = []; // required field, sent empty
-      } else {
-        veniceBody.messages = messages;
-      }
-
-      const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
-      const veniceResponse = await fetch(
-        `${VENICE_BASE_URL}/chat/completions`,
-        {
-          method: "POST",
-          headers: veniceHeaders,
-          body: JSON.stringify(veniceBody),
-          signal: AbortSignal.timeout(VENICE_TIMEOUT_MS),
-        }
-      );
-
-      const veniceMs = Date.now() - tVeniceStart;
-
-      if (!veniceResponse.ok) {
-        const errorText = await veniceResponse.text();
-        console.error(`[${reqId}] Venice error ${veniceResponse.status} — ${veniceMs}ms:`, errorText);
-        res.status(502).json({
-          error: "Venice API error",
-          status: veniceResponse.status,
-        });
-        return;
-      }
-
-      const veniceData = await veniceResponse.json();
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
       const totalMs = Date.now() - t0;
 
-      // Post-call audit: verify actual Venice cost was within budget
-      const usage = veniceData?.usage;
-      if (usage?.prompt_tokens) {
-        const actualInputCost = (usage.prompt_tokens / 1_000_000) * INPUT_PRICE_PER_TOKEN;
-        const actualOutputCost = ((usage.completion_tokens || 0) / 1_000_000) * (3.20 / 1_000_000);
-        const actualTotalCost = actualInputCost + actualOutputCost;
-        console.log(`[${reqId}] Venice usage: ${usage.prompt_tokens} in + ${usage.completion_tokens || 0} out = $${actualTotalCost.toFixed(4)} (cap $${MAX_COST_USD})`);
-        if (actualTotalCost > MAX_COST_USD) {
-          console.warn(`[${reqId}] ⚠️  actual cost $${actualTotalCost.toFixed(4)} exceeded cap — consider refund or adjustment`);
-        }
+      if (veniceData?.usage) {
+        const actualCost = computeVeniceCost(veniceData.usage);
+        console.log(`[${reqId}] Venice usage: ${veniceData.usage.prompt_tokens} in + ${veniceData.usage.completion_tokens || 0} out = $${actualCost.toFixed(6)} (cap $${MAX_COST_USD})`);
       }
-      console.log(`[${reqId}] ✅ done — Venice: ${veniceMs}ms | total: ${totalMs}ms`);
+      console.log(`[${reqId}] ✅ done [proof] — Venice: ${veniceMs}ms | total: ${totalMs}ms`);
 
-      // ─── Mark nullifier as spent AFTER Venice succeeds ───
       await saveNullifier(nullifier_hash);
       console.log(`[${reqId}] nullifier burned (${ts()})`);
 
       res.json(veniceData);
     } catch (veniceError: any) {
-      const veniceMs = Date.now() - tVeniceStart;
+      const statusCode = veniceError.statusCode || 500;
       const isTimeout = veniceError?.name === "TimeoutError" || veniceError?.name === "AbortError";
       if (isTimeout) {
-        console.error(`[${reqId}] Venice timed out after ${veniceMs}ms — nullifier NOT burned, safe to retry`);
-        res.status(504).json({
-          error: "Venice API timed out — your credit was NOT spent, please retry",
-        });
+        console.error(`[${reqId}] Venice timed out — nullifier NOT burned, safe to retry`);
+        res.status(504).json({ error: "Venice API timed out — your credit was NOT spent, please retry" });
+      } else if (statusCode === 400 || statusCode === 502) {
+        res.status(statusCode).json({ error: veniceError.message });
       } else {
-        console.error(`[${reqId}] Venice request failed — ${veniceMs}ms:`, veniceError);
-        res.status(502).json({
-          error: "Failed to reach Venice API",
-          details: veniceError.message,
-        });
+        console.error(`[${reqId}] Venice request failed:`, veniceError);
+        res.status(502).json({ error: "Failed to reach Venice API", details: veniceError.message });
       }
-      return;
     }
   } catch (error: any) {
     console.error(`[${reqId}] unexpected error (${ts()}):`, error);
@@ -1375,10 +1365,12 @@ async function start() {
     console.log(`   Hash function: bb.js Poseidon2 (Noir-compatible)`);
     console.log(`   Tree type: Standard binary with zero-padding (Semaphore-style)`);
     console.log(`   Verifier pool: ${verifierPool.size} workers (UltraHonkBackend pre-warmed)`);
-    console.log(`\n   POST /v1/chat — Submit proof + get LLM response`);
-    console.log(`   GET  /health  — Server health + valid roots count`);
-    console.log(`   GET  /stats   — Server stats`);
-    console.log(`\n   No wallet. No API key. No identity.\n`);
+    console.log(`   Cost multiplier: ${COST_MULTIPLIER}x`);
+    console.log(`\n   POST /v1/chat/start — ZK proof → conversation token + first response`);
+    console.log(`   POST /v1/chat       — Bearer token continuation (or legacy proof)`);
+    console.log(`   GET  /health        — Server health + valid roots count`);
+    console.log(`   GET  /stats         — Server stats`);
+    console.log(`\n   1 credit = 1 conversation ($${INITIAL_BALANCE.toFixed(2)}). No wallet. No identity.\n`);
   });
 }
 

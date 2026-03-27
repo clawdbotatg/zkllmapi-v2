@@ -154,11 +154,14 @@ export async function callZkApiWithToken(
   stream: boolean,
   options?: { model?: string },
 ): Promise<Response> {
-  const body: Record<string, unknown> = { token, messages, stream };
+  const body: Record<string, unknown> = { messages, stream };
   if (options?.model) body.model = options.model;
   return fetch(API_URL + "/v1/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify(body),
   });
 }

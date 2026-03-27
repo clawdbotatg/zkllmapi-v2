@@ -395,7 +395,7 @@ async function migrateNullifiersFromFile(): Promise<number> {
   }
 }
 
-// ─── Model (locked for demo — one credit, one model) ─────────
+// ─── Model (locked for demo — one model for all conversations) ─
 const MODEL = process.env.VENICE_MODEL || "zai-org-glm-5";
 
 // ─── Venice Pricing (zai-org-glm-5) ──────────────────────────
@@ -422,9 +422,9 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }));
 
 // ─── Rate Limiting ────────────────────────────────────────────
-// /v1/chat is CPU-heavy (2s ZK proof verification per request).
-// Without throttling, an attacker can saturate the verifier pool
-// with garbage proofs and DoS all legitimate users at zero cost.
+// /v1/chat/start and /v1/chat/key involve CPU-heavy ZK proof verification (~2s).
+// Without throttling, an attacker can saturate the verifier with garbage proofs.
+// Token-based /v1/chat calls are lighter (no ZK verify) and get a higher limit.
 const chatLimiter = rateLimit({
   windowMs: 60_000,           // 1-minute rolling window
   max: parseInt(process.env.RATE_LIMIT_CHAT || "10"),  // 10 req/min per IP
@@ -585,8 +585,9 @@ app.get("/tree", readLimiter, async (_req, res) => {
 
 // ─── API Key Endpoint (server-side proof generation) ──────────
 // POST /v1/chat/key
-// Accepts a one-time API key, generates the ZK proof server-side,
-// verifies it, and proxies to Venice. No bb.js needed on the client.
+// Accepts an API key, generates the ZK proof server-side,
+// verifies it, and starts a conversation (returns bearer token + first response).
+// No bb.js needed on the client.
 
 // Lazy-loaded Noir + UltraHonkBackend for proof generation
 let noirInstance: any = null;

@@ -1,7 +1,7 @@
 {
   "name": "ZK LLM API",
   "short_name": "ZK LLM API",
-  "description": "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
+  "description": "Private LLM conversations via ZK proofs. 1 credit = 1 conversation. No account. No identity.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",

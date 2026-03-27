@@ -31,8 +31,8 @@ const SYSTEM_PROMPT = `You are running inside the ZK LLM API chat interface at z
 Key facts about this project:
 - Model: zai-org-glm-5 (Z.AI's flagship, 198K context, reasoning-capable)
 - Hash function: Poseidon2 (ZK-friendly, used for Merkle tree and nullifier hashing)
-- How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to call the API anonymously. The ZK proof breaks the link between the paying wallet and the API call.
-- Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each credit is single-use (nullifier is burned after one API call).
+- How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to start a conversation anonymously. 1 credit = 1 conversation with a $1.00 balance. The ZK proof burns once at conversation start; subsequent messages use a bearer token until the balance is depleted.
+- Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each conversation starts with a fresh nullifier burn — there is no cryptographic link between separate conversations.
 - Contract addresses (Base mainnet): APICredits=0x5954..., CLAWDPricing=0x445D..., CLAWDRouter=0xCB42..., CLAWD token=0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07
 - Website: https://zkllmapi.com | GitHub: https://github.com/clawdbotatg/zk-api-credits
 
@@ -614,7 +614,7 @@ const ChatPage: NextPage = () => {
                     ? "No credits — go to /buy to get some"
                     : hasActiveConversation
                       ? "Continue the conversation... (Enter to send)"
-                      : "Type your message... (Enter to send, uses 1 credit)"
+                      : "Type your message... (Enter to send, starts a conversation)"
               }
               value={message}
               onChange={e => {

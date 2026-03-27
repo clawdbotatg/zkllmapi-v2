@@ -12,7 +12,7 @@ export const viewport = {
 
 export const metadata = getMetadata({
   title: "ZK LLM API — Private AI via ZK Proofs",
-  description: "Private LLM API access via ZK proofs. No account. No API key. Just a proof.",
+  description: "Private LLM conversations via ZK proofs. 1 credit = 1 conversation. No account. No identity.",
 });
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {

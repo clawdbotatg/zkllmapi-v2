@@ -166,7 +166,7 @@ const AboutPage: NextPage = () => {
                 {
                   step: "3",
                   title: "Buy Credits — one transaction (calls stakeAndRegister())",
-                  body: "You approve CLAWD, then the router purchases N credits by calling stakeAndRegister(amount, commitments[]) on the APICredits contract. The router swaps ETH → CLAWD at market rate and locks N × pricePerCredit CLAWD. The USD cost per credit is fixed (~$0.05 via onchain oracle); the CLAWD amount varies with market price. One transaction, N credits.",
+                  body: "You approve CLAWD, then the router purchases N credits by calling stakeAndRegister(amount, commitments[]) on the APICredits contract. The router swaps ETH → CLAWD at market rate and locks N × pricePerCredit CLAWD. Each credit gives you a conversation with a $1.00 balance. The CLAWD amount per credit varies with market price. One transaction, N credits.",
                 },
                 {
                   step: "4",
@@ -181,7 +181,7 @@ const AboutPage: NextPage = () => {
                 {
                   step: "6",
                   title: "Server verifies and responds",
-                  body: "The server verifies the UltraHonk proof against the onchain root, checks the nullifier hasn't been spent, marks it spent, then forwards your message to the Venice LLM API and returns the response.",
+                  body: "The server verifies the UltraHonk proof against the onchain root, checks the nullifier hasn't been spent, marks it spent, and starts a conversation. You receive a bearer token with a $1.00 balance — subsequent messages use the token (no proof needed) until the balance is depleted.",
                 },
               ].map(({ step, title, body }) => (
                 <div key={step} className="flex gap-4 bg-base-100 rounded-xl p-5 shadow">
@@ -410,8 +410,8 @@ fn main(
                   "The proof is generated client-side. The server receives only the proof, nullifier_hash, and your message.",
                 ],
                 [
-                  "✅ Server cannot link two API calls",
-                  "Each credit has a unique nullifier. There's no correlation between calls unless you reuse a credential.",
+                  "✅ Server cannot link two conversations",
+                  "Each conversation starts with a unique nullifier burn. There's no correlation between separate conversations. Within one conversation, messages share a bearer token — the server can link turns in the same session but not across sessions.",
                 ],
                 [
                   "✅ Server cannot identify which leaf you used",
@@ -423,7 +423,7 @@ fn main(
                 ],
                 [
                   "⚠️ Credits are stored in localStorage",
-                  "If you clear your browser, unspent credits are gone (CLAWD is locked onchain, but the credentials are lost). Back them up — or better yet, script the purchase and let your bot manage credits automatically via the skill.md API.",
+                  "If you clear your browser, unused credits are gone (CLAWD is locked onchain, but the credentials are lost). Active conversation tokens are server-side and expire after 24h. Back up your credits — or script the purchase and let your bot manage them automatically.",
                 ],
               ].map(([title, body]) => (
                 <div key={title as string} className="bg-base-100 rounded-xl p-4 shadow">

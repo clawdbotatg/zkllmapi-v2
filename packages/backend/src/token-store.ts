@@ -118,9 +118,8 @@ export async function deductToken(
 }
 
 // ─── Conversation Counter (per nullifier hash) ───────────────
-// Tracks how many messages have been sent with a given nullifier.
-// The counter is used as a public input to the ZK circuit so each
-// API call produces a unique nullifier hash.
+// Tracks the counter for a given nullifier hash.
+// Used as a public input to the ZK circuit for deterministic nullifier derivation.
 
 /**
  * Get the current counter for a nullifier hash. Returns 0 if not found.

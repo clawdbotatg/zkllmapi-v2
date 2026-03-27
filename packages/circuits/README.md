@@ -26,9 +26,9 @@ The circuit proves that:
 1. User buys credits → contract stores `Poseidon2(secret, nullifier)` in a Merkle tree
 2. User generates a ZK proof in-browser proving they know a valid leaf
 3. Server verifies the proof and checks `nullifier_hash` hasn't been seen before
-4. If valid, the server serves the API call — **without ever learning who the user is**
+4. If valid, the server starts a conversation — issuing a bearer token with a $1.00 balance. Subsequent messages use the token (no proof needed) until the balance is depleted. **The server never learns who the user is.**
 
-The ZK proof breaks the link between the wallet that paid and the API consumer.
+The ZK proof breaks the link between the wallet that paid and the conversation.
 
 ## Prerequisites
 

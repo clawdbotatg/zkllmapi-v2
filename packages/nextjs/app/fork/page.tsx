@@ -90,12 +90,12 @@ const ForkPage: NextPage = () => {
                       <span className="text-xs font-normal opacity-50 ml-2">— your privacy gateway</span>
                     </h3>
                     <p className="text-sm opacity-70 mt-1">
-                      Verifies proofs, burns nullifiers, proxies to any LLM provider. Tracks nullifiers in Redis. Never
-                      sees your wallet — only that a valid proof was presented.
+                      Verifies proofs at conversation start, issues bearer tokens with $1.00 balance, proxies to any LLM
+                      provider. Tracks nullifiers and conversation tokens in Redis. Never sees your wallet.
                     </p>
                     <div className="mt-3 font-mono text-xs opacity-60 space-y-0.5">
-                      <p>├─ /v1/chat — verify proof, call LLM</p>
-                      <p>├─ /v1/chat/start — conversation token + first response</p>
+                      <p>├─ /v1/chat/start — burn proof, get conversation token + first response</p>
+                      <p>├─ /v1/chat — continue conversation with bearer token</p>
                       <p>├─ /tree — current Merkle tree for client</p>
                       <p>└─ /circuit — circuit JSON for client-side proving</p>
                     </div>

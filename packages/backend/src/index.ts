@@ -11,7 +11,7 @@ import { createPublicClient, http, webSocket, parseAbi, parseAbiItem } from "vie
 import { base } from "viem/chains";
 import { Barretenberg, Fr } from "@aztec/bb.js";
 import { VerifierPool } from "./verifier-pool.js";
-import { createToken, getToken, deductToken, getCounter, createCounter, incrementCounter, TOKEN_TTL_SECONDS, INITIAL_BALANCE } from "./token-store.js";
+import { createToken, getToken, deductToken, TOKEN_TTL_SECONDS, INITIAL_BALANCE } from "./token-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -478,13 +478,6 @@ app.get("/nullifier/:hash", async (req, res) => {
   res.json({ spent });
 });
 
-// ─── Conversation Counter ──────────────────────────────────────
-// GET /counter/:nullifierHash — returns the current counter for a nullifier hash
-app.get("/counter/:nullifierHash", async (req, res) => {
-  const counter = await getCounter(req.params.nullifierHash);
-  res.json({ counter });
-});
-
 // ─── Contract Info ─────────────────────────────────────────────
 // GET /contract — returns current contract address + onchain root (for update.sh auto-sync)
 app.get("/contract", async (_req, res) => {
@@ -651,19 +644,12 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
     return;
   }
 
-  // ─── Compute nullifier hash with counter ─────────────────
-  // First compute the base nullifier hash (counter=0) to look up the counter
+  // ─── Compute nullifier hash ──────────────────────────────
+  // v2: nullifier_hash = poseidon2([nullifier]) — single input, matches circuit
   const nullifierBigInt = BigInt(nullifier);
-  const baseNullifierHashFr = await bb.poseidon2Hash([new Fr(nullifierBigInt), new Fr(0n)]);
-  const baseNullifierHash = "0x" + BigInt(baseNullifierHashFr.toString()).toString(16).padStart(64, "0");
-
-  // Get the current counter for this nullifier
-  const currentCounter = await getCounter(baseNullifierHash);
-
-  // Compute the actual nullifier hash with the current counter
-  const nullifierHashFr = await bb.poseidon2Hash([new Fr(nullifierBigInt), new Fr(BigInt(currentCounter))]);
+  const nullifierHashFr = await bb.poseidon2Hash([new Fr(nullifierBigInt)]);
   const nullifierHash = "0x" + BigInt(nullifierHashFr.toString()).toString(16).padStart(64, "0");
-  console.log(`[${reqId}] nullifier_hash=${nullifierHash.slice(0, 20)}... counter=${currentCounter} (${ts()})`);
+  console.log(`[${reqId}] nullifier_hash=${nullifierHash.slice(0, 20)}... (${ts()})`);
 
   // ─── Check nullifier not already spent ──────────────────
   if (pendingNullifiers.has(nullifierHash)) {
@@ -745,7 +731,6 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
         nullifier_hash: nullifierHash,
         root: rootHex,
         depth: treeDepth,
-        current_counter: "0x" + BigInt(currentCounter).toString(16).padStart(64, "0"),
         nullifier: "0x" + nullifierBigInt.toString(16).padStart(64, "0"),
         secret: "0x" + BigInt(secret).toString(16).padStart(64, "0"),
         indices: indices,
@@ -887,13 +872,9 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     nullifier_hash,
     root,
     depth,
-    counter: reqCounter,
     messages,
     encrypted_messages,
   } = req.body;
-
-  // Counter defaults to 0 for backwards compatibility
-  const proofCounter = reqCounter !== undefined ? Number(reqCounter) : 0;
 
   if (req.body.model && req.body.model !== MODEL) {
     console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
@@ -919,7 +900,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     return;
   }
   pendingNullifiers.add(nullifier_hash);
-  console.log(`[${reqId}] nullifier + root checks passed, counter=${proofCounter} (${ts()})`);
+  console.log(`[${reqId}] nullifier + root checks passed (${ts()})`);
 
   try {
     if (validRoots.size === 0) {
@@ -942,7 +923,6 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
       nullifier_hash,
       root,
       "0x" + BigInt(depth).toString(16).padStart(64, "0"),
-      "0x" + BigInt(proofCounter).toString(16).padStart(64, "0"),
     ];
     console.log(`[${reqId}] publicInputs:`, pubInputs.map(p => p.slice(0, 20) + "..."));
     let proofValid = false;
@@ -964,8 +944,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     let tokenId: string;
     try {
       tokenId = await createToken(nullifier_hash, root, depth);
-      await createCounter(nullifier_hash);
-      console.log(`[${reqId}] token created: ${tokenId.slice(0, 16)}..., counter initialized (${ts()})`);
+      console.log(`[${reqId}] token created: ${tokenId.slice(0, 16)}... (${ts()})`);
     } catch (tokenError: any) {
       console.error(`[${reqId}] token creation failed:`, tokenError);
       res.status(500).json({ error: "Failed to create session token" });

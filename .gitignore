@@ -26,3 +26,6 @@ packages/proxy/.env
 
 # Proxy credit secrets
 packages/proxy/credits.json
+
+# Local notes
+NOTES.local.md

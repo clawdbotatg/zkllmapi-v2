@@ -55,6 +55,7 @@ export const Header = () => {
           <span className="text-primary">ZK</span>
           <span className="text-base-content/50">/</span>
           <span>LLM</span>
+          <span className="text-base-content/30 text-xs ml-1">(v2)</span>
         </Link>
 
         {/* Nav */}

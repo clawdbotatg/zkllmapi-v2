@@ -968,7 +968,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
       console.log(`[${reqId}] token created: ${tokenId.slice(0, 16)}..., counter initialized (${ts()})`);
     } catch (tokenError: any) {
       console.error(`[${reqId}] token creation failed:`, tokenError);
-      res.status(500).json({ error: "Failed to create conversation token" });
+      res.status(500).json({ error: "Failed to create session token" });
       return;
     }
 
@@ -1138,12 +1138,12 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     const tokenData = await getToken(bearerToken);
     if (!tokenData) {
       console.log(`[${reqId}] token not found or expired (${ts()})`);
-      res.status(401).json({ error: "Invalid or expired conversation token" });
+      res.status(401).json({ error: "Invalid or expired session token" });
       return;
     }
     if (tokenData.balanceRemaining <= 0) {
       console.log(`[${reqId}] token balance depleted (${ts()})`);
-      res.status(402).json({ error: "Conversation balance depleted — start a new conversation" });
+      res.status(402).json({ error: "Chat session balance depleted — start a new chat session" });
       return;
     }
     console.log(`[${reqId}] token valid, balance: $${tokenData.balanceRemaining.toFixed(6)} (${ts()})`);
@@ -1367,11 +1367,11 @@ async function start() {
     console.log(`   Tree type: Standard binary with zero-padding (Semaphore-style)`);
     console.log(`   Verifier pool: ${verifierPool.size} workers (UltraHonkBackend pre-warmed)`);
     console.log(`   Cost multiplier: ${COST_MULTIPLIER}x`);
-    console.log(`\n   POST /v1/chat/start — ZK proof → conversation token + first response`);
+    console.log(`\n   POST /v1/chat/start — ZK proof → session token + first response`);
     console.log(`   POST /v1/chat       — Bearer token continuation (or legacy proof)`);
     console.log(`   GET  /health        — Server health + valid roots count`);
     console.log(`   GET  /stats         — Server stats`);
-    console.log(`\n   1 credit = 1 conversation ($${INITIAL_BALANCE.toFixed(2)}). No wallet. No identity.\n`);
+    console.log(`\n   1 credit = 1 chat session ($${INITIAL_BALANCE.toFixed(2)}). No wallet. No identity.\n`);
   });
 }
 

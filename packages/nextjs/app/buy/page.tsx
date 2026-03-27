@@ -541,7 +541,7 @@ const BuyPage: NextPage = () => {
             <p className="text-xs font-mono text-primary mb-3 tracking-widest">BUY CREDITS</p>
             <h1 className="text-4xl font-mono font-bold mb-3">Get API Access</h1>
             <p className="font-mono text-base-content/50 text-sm">
-              One credit = one private conversation ($1.00 balance). No account. No identity.
+              One credit = one private chat session ($1.00 balance). No account. No identity.
               {quoteData
                 ? ` · ~$${Number(formatEther((quoteData as [bigint, bigint])[1] / BigInt(Math.max(1, numCredits)))).toFixed(4)} per credit`
                 : creditPriceUSD
@@ -693,7 +693,7 @@ const BuyPage: NextPage = () => {
               )}
 
               <p className="mt-3 text-xs font-mono text-base-content/30">
-                * Each credit = one conversation ($1.00 balance). Keys can also be used with the proxy for programmatic
+                * Each credit = one chat session ($1.00 balance). Keys can also be used with the proxy for programmatic
                 access.
               </p>
             </div>
@@ -740,7 +740,7 @@ const BuyPage: NextPage = () => {
               {keysExpanded && (
                 <div className="p-5">
                   <p className="text-xs font-mono text-base-content/40 mb-4">
-                    Each key starts one conversation. Store them safely — they cannot be recovered.
+                    Each key starts one chat session. Store them safely — they cannot be recovered.
                   </p>
 
                   {/* Bulk actions */}
@@ -836,21 +836,21 @@ const BuyPage: NextPage = () => {
                     </summary>
                     <div className="mt-3 border border-[#222] bg-[#111] overflow-x-auto">
                       <pre className="p-4 text-xs font-mono text-base-content/50 leading-relaxed">{`# Each key encodes a secret + nullifier + commitment.
-# 1 credit = 1 conversation ($1.00 balance).
+# 1 credit = 1 chat session ($1.00 balance).
 #
-# Step 1: Start a conversation (burns the ZK proof once)
+# Step 1: Start a chat session (burns the ZK proof once)
 #   POST https://backend.zkllmapi.com/v1/chat/start
 #   Body: { proof, nullifier_hash, root, depth, messages }
 #   Returns: { token, balanceRemaining, expiresAt, response }
 #
-# Step 2: Continue the conversation (no proof needed)
+# Step 2: Continue the chat session (no proof needed)
 #   POST https://backend.zkllmapi.com/v1/chat
 #   Headers: Authorization: Bearer <token>
 #   Body: { messages }
 #   Returns: LLM response + x-conversation-balance header
 #
 # Balance deducts at actual Venice cost per message.
-# When balance hits $0, start a new conversation with a new credit.
+# When balance hits $0, start a new chat session with a new credit.
 #
 # Use the /chat page for interactive use, or see /fork for
 # the full circuit source and integration guide.`}</pre>

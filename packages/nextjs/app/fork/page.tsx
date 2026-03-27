@@ -90,12 +90,12 @@ const ForkPage: NextPage = () => {
                       <span className="text-xs font-normal opacity-50 ml-2">— your privacy gateway</span>
                     </h3>
                     <p className="text-sm opacity-70 mt-1">
-                      Verifies proofs at conversation start, issues bearer tokens with $1.00 balance, proxies to any LLM
-                      provider. Tracks nullifiers and conversation tokens in Redis. Never sees your wallet.
+                      Verifies proofs at chat session start, issues bearer tokens with $1.00 balance, proxies to any LLM
+                      provider. Tracks nullifiers and session tokens in Redis. Never sees your wallet.
                     </p>
                     <div className="mt-3 font-mono text-xs opacity-60 space-y-0.5">
-                      <p>├─ /v1/chat/start — burn proof, get conversation token + first response</p>
-                      <p>├─ /v1/chat — continue conversation with bearer token</p>
+                      <p>├─ /v1/chat/start — burn proof, get session token + first response</p>
+                      <p>├─ /v1/chat — continue chat session with bearer token</p>
                       <p>├─ /tree — current Merkle tree for client</p>
                       <p>└─ /circuit — circuit JSON for client-side proving</p>
                     </div>
@@ -180,7 +180,7 @@ cd packages/backend && yarn start`}
                   ["Payment Token", "Any ERC-20. Set at deploy time."],
                   ["Pricing", "Fixed, TWAP, auction, governance vote — anything."],
                   ["Inference Provider", "Venice, OpenAI, Anthropic, local model — swap the API URL."],
-                  ["Credit Model", "Per-call (v1) or per-conversation with bearer token (v2)."],
+                  ["Credit Model", "Per-call (v1) or per-chat-session with bearer token (v2)."],
                   ["Settlement", "Direct claim, DAO treasury, automatic LP provision — your choice."],
                 ].map(([title, desc]) => (
                   <li key={title} className="flex items-start gap-2">

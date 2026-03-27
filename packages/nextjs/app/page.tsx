@@ -102,7 +102,7 @@ const Home: NextPage = () => {
             </div>
             <div className="border-r border-[#333] p-6">
               <p className="text-3xl font-mono font-bold">{spentCount ?? "—"}</p>
-              <p className="text-xs font-mono text-base-content/40 mt-1">CONVERSATIONS STARTED</p>
+              <p className="text-xs font-mono text-base-content/40 mt-1">CHAT SESSIONS STARTED</p>
             </div>
             <div className="p-6">
               <p className="text-3xl font-mono font-bold text-[#42F38F]">{priceUsd ?? "—"}</p>
@@ -129,8 +129,8 @@ const Home: NextPage = () => {
                 },
                 {
                   n: "03",
-                  title: "Start a conversation",
-                  body: "POST your proof to start a conversation. You get a bearer token with a $1.00 balance — keep chatting until it runs out.",
+                  title: "Start a chat session",
+                  body: "POST your proof to start a chat session. You get a bearer token with a $1.00 balance — keep chatting until it runs out.",
                 },
               ].map(({ n, title, body }, i) => (
                 <div key={n} className={`p-8 ${i < 2 ? "md:border-r border-b md:border-b-0 border-[#333]" : ""}`}>
@@ -152,9 +152,9 @@ const Home: NextPage = () => {
                 <div className="w-2 h-2 rounded-full bg-[#333]"></div>
                 <span className="text-xs font-mono text-base-content/30 ml-2">example.sh</span>
               </div>
-              <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Buy a credit at zkllmapi.com/buy — each credit starts a conversation ($1.00 balance).
+              <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Buy a credit at zkllmapi.com/buy — each credit starts a chat session ($1.00 balance).
 
-# Step 1: Start a conversation (uses API key, server generates ZK proof for you)
+# Step 1: Start a chat session (uses API key, server generates ZK proof for you)
 curl -X POST https://backend.zkllmapi.com/v1/chat/key \\
   -H 'Content-Type: application/json' \\
   -d '{
@@ -163,7 +163,7 @@ curl -X POST https://backend.zkllmapi.com/v1/chat/key \\
   }'
 # → Returns: { token: "conv_...", balanceRemaining: 1.0, response: "..." }
 
-# Step 2: Continue the conversation (no proof needed, uses bearer token)
+# Step 2: Continue the chat session (no proof needed, uses bearer token)
 curl -X POST https://backend.zkllmapi.com/v1/chat \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer conv_...' \\

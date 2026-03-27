@@ -31,8 +31,8 @@ const SYSTEM_PROMPT = `You are running inside the ZK LLM API chat interface at z
 Key facts about this project:
 - Model: zai-org-glm-5 (Z.AI's flagship, 198K context, reasoning-capable)
 - Hash function: Poseidon2 (ZK-friendly, used for Merkle tree and nullifier hashing)
-- How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to start a conversation anonymously. 1 credit = 1 conversation with a $1.00 balance. The ZK proof burns once at conversation start; subsequent messages use a bearer token until the balance is depleted.
-- Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each conversation starts with a fresh nullifier burn — there is no cryptographic link between separate conversations.
+- How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to start a chat session anonymously. 1 credit = 1 chat session with a $1.00 balance. The ZK proof burns once at chat session start; subsequent messages use a bearer token until the balance is depleted.
+- Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each chat session starts with a fresh nullifier burn — there is no cryptographic link between separate sessions.
 - Contract addresses (Base mainnet): APICredits=0x5954..., CLAWDPricing=0x445D..., CLAWDRouter=0xCB42..., CLAWD token=0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07
 - Website: https://zkllmapi.com | GitHub: https://github.com/clawdbotatg/zk-api-credits
 
@@ -192,7 +192,7 @@ const ChatPage: NextPage = () => {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(TOKEN_BALANCE_KEY);
         localStorage.removeItem(TOKEN_EXPIRY_KEY);
-        throw new Error("Conversation ended — your balance is depleted. Start a new conversation to continue.");
+        throw new Error("Chat session ended — your balance is depleted. Start a new chat session to continue.");
       }
       const errText = await apiRes.text();
       throw new Error(`API error (${apiRes.status}): ${errText}`);
@@ -328,7 +328,7 @@ const ChatPage: NextPage = () => {
     const { proof: proofBytes } = await backend.generateProof(witness);
     await bb.destroy();
 
-    setProofStatus("Starting conversation...");
+    setProofStatus("Starting chat session...");
 
     const proofHex =
       "0x" +
@@ -477,8 +477,8 @@ const ChatPage: NextPage = () => {
                   {availableCredits.length === 0
                     ? "→ Go to /buy to get credits first"
                     : hasActiveConversation
-                      ? `Active conversation · $${tokenBalance.toFixed(4)} remaining`
-                      : `${availableCredits.length} credit${availableCredits.length !== 1 ? "s" : ""} ready · 1 credit = 1 conversation ($1.00)`}
+                      ? `Active chat session · $${tokenBalance.toFixed(4)} remaining`
+                      : `${availableCredits.length} credit${availableCredits.length !== 1 ? "s" : ""} ready · 1 credit = 1 chat session ($1.00)`}
                 </p>
               </div>
             </div>
@@ -522,13 +522,13 @@ const ChatPage: NextPage = () => {
             {conversationEnded && (
               <div className="flex justify-center">
                 <div className="border border-[#333] bg-[#111] px-6 py-4 text-center">
-                  <p className="text-xs font-mono text-base-content/40 mb-3">Conversation balance depleted.</p>
+                  <p className="text-xs font-mono text-base-content/40 mb-3">Chat session balance depleted.</p>
                   {availableCredits.length > 0 ? (
                     <button
                       className="cursor-pointer text-xs font-mono text-primary hover:text-primary/80 transition-colors border border-primary/30 px-4 py-2"
                       onClick={startNewConversation}
                     >
-                      START NEW CONVERSATION →
+                      START NEW CHAT SESSION →
                     </button>
                   ) : (
                     <p className="text-xs font-mono text-base-content/30">
@@ -574,7 +574,7 @@ const ChatPage: NextPage = () => {
             <span className="font-mono text-xs text-base-content/30">
               {conversationEnded ? (
                 <span className="text-yellow-500/70">
-                  conversation ended —{" "}
+                  chat session ended —{" "}
                   {availableCredits.length > 0 ? (
                     <button className="cursor-pointer underline hover:text-yellow-500" onClick={startNewConversation}>
                       start new
@@ -608,13 +608,13 @@ const ChatPage: NextPage = () => {
               placeholder={
                 conversationEnded
                   ? availableCredits.length > 0
-                    ? "Start a new conversation..."
+                    ? "Start a new chat session..."
                     : "No credits — go to /buy"
                   : !hasActiveConversation && availableCredits.length === 0
                     ? "No credits — go to /buy to get some"
                     : hasActiveConversation
-                      ? "Continue the conversation... (Enter to send)"
-                      : "Type your message... (Enter to send, starts a conversation)"
+                      ? "Continue the chat session... (Enter to send)"
+                      : "Type your message... (Enter to send, starts a chat session)"
               }
               value={message}
               onChange={e => {

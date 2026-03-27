@@ -115,7 +115,7 @@ const DebugPage: NextPage = () => {
               ["GET", "/tree", "Full Merkle tree"],
               ["GET", "/circuit", "Circuit JSON for client-side proving"],
               ["POST", "/v1/chat/start", "Burn proof, get token + first response"],
-              ["POST", "/v1/chat", "Continue conversation with bearer token"],
+              ["POST", "/v1/chat", "Continue chat session with bearer token"],
             ].map(([method, path, desc]) => (
               <div key={path} className="flex items-start gap-3">
                 <span

@@ -51,10 +51,10 @@ const AboutPage: NextPage = () => {
               fork it and deploy it for your own token, your own provider, your own chain.
             </p>
             <p className="text-base-content/70 leading-relaxed mb-4">
-              v2 fixes the flat-rate problem: 1 credit = 1 conversation = $1.00 balance. You pay once, the balance
-              deducts at actual Venice cost per call. The ZK proof burns once at conversation start — subsequent calls
-              use a bearer token. The next step is a ZK-native circuit counter (no bearer token trust assumption) — v3
-              RFC coming soon.
+              v2 fixes the flat-rate problem: 1 credit = 1 chat session = $1.00 balance. You pay once, the balance
+              deducts at actual Venice cost per message. The ZK proof burns once at chat session start — subsequent
+              messages use a bearer token. The next step is a ZK-native circuit counter (no bearer token trust
+              assumption) — v3 RFC coming soon.
             </p>
           </section>
 
@@ -166,7 +166,7 @@ const AboutPage: NextPage = () => {
                 {
                   step: "3",
                   title: "Buy Credits — one transaction (calls stakeAndRegister())",
-                  body: "You approve CLAWD, then the router purchases N credits by calling stakeAndRegister(amount, commitments[]) on the APICredits contract. The router swaps ETH → CLAWD at market rate and locks N × pricePerCredit CLAWD. Each credit gives you a conversation with a $1.00 balance. The CLAWD amount per credit varies with market price. One transaction, N credits.",
+                  body: "You approve CLAWD, then the router purchases N credits by calling stakeAndRegister(amount, commitments[]) on the APICredits contract. The router swaps ETH → CLAWD at market rate and locks N × pricePerCredit CLAWD. Each credit gives you a chat session with a $1.00 balance. The CLAWD amount per credit varies with market price. One transaction, N credits.",
                 },
                 {
                   step: "4",
@@ -181,7 +181,7 @@ const AboutPage: NextPage = () => {
                 {
                   step: "6",
                   title: "Server verifies and responds",
-                  body: "The server verifies the UltraHonk proof against the onchain root, checks the nullifier hasn't been spent, marks it spent, and starts a conversation. You receive a bearer token with a $1.00 balance — subsequent messages use the token (no proof needed) until the balance is depleted.",
+                  body: "The server verifies the UltraHonk proof against the onchain root, checks the nullifier hasn't been spent, marks it spent, and starts a chat session. You receive a bearer token with a $1.00 balance — subsequent messages use the token (no proof needed) until the balance is depleted.",
                 },
               ].map(({ step, title, body }) => (
                 <div key={step} className="flex gap-4 bg-base-100 rounded-xl p-5 shadow">
@@ -410,8 +410,8 @@ fn main(
                   "The proof is generated client-side. The server receives only the proof, nullifier_hash, and your message.",
                 ],
                 [
-                  "✅ Server cannot link two conversations",
-                  "Each conversation starts with a unique nullifier burn. There's no correlation between separate conversations. Within one conversation, messages share a bearer token — the server can link turns in the same session but not across sessions.",
+                  "✅ Server cannot link two chat sessions",
+                  "Each chat session starts with a unique nullifier burn. There's no correlation between separate sessions. Within one chat session, messages share a bearer token — the server can link turns in the same session but not across sessions.",
                 ],
                 [
                   "✅ Server cannot identify which leaf you used",
@@ -423,7 +423,7 @@ fn main(
                 ],
                 [
                   "⚠️ Credits are stored in localStorage",
-                  "If you clear your browser, unused credits are gone (CLAWD is locked onchain, but the credentials are lost). Active conversation tokens are server-side and expire after 24h. Back up your credits — or script the purchase and let your bot manage them automatically.",
+                  "If you clear your browser, unused credits are gone (CLAWD is locked onchain, but the credentials are lost). Active chat session tokens are server-side and expire after 24h. Back up your credits — or script the purchase and let your bot manage them automatically.",
                 ],
               ].map(([title, body]) => (
                 <div key={title as string} className="bg-base-100 rounded-xl p-4 shadow">
@@ -494,7 +494,7 @@ NEXT_PUBLIC_API_URL=https://your-server.com yarn vercel --prod`}</pre>
                   title: "Variable Cost + Refund Tickets",
                   difficulty: "Medium",
                   badge: "badge-warning",
-                  body: "Venice returns token counts on every response. The server signs a refund ticket for unused capacity (C_max - C_actual). The client accumulates these locally. Unlocks efficient per-token pricing instead of fixed credits.",
+                  body: "Venice returns token counts on every response. The server signs a refund ticket for unused capacity (C_max - C_actual). The client accumulates these locally. Unlocks efficient per-token pricing instead of flat-rate credits.",
                 },
                 {
                   step: "4",

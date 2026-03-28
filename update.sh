@@ -8,11 +8,26 @@ CONTAINER_NAME="zk-v2-backend"
 IMAGE_NAME="zk-v2-backend"
 ENV_FILE="packages/backend/.env"
 BACKEND_URL="https://backend.v2.zkllmapi.com"
+ALCHEMY_KEY="AlQf7KFYpAw_AlE4oCP85"
 
 cd ~/zkllmapi-v2
 
 echo "🔄 Pulling latest code..."
 git pull
+
+echo ""
+echo "🔍 Patching RPC/WS URLs (Alchemy)..."
+for VAR_VALUE in \
+  "RPC_URL=https://base-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY" \
+  "WS_URL=wss://base-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY"; do
+  VAR="${VAR_VALUE%%=*}"
+  if grep -q "^$VAR=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^$VAR=.*|$VAR_VALUE|" "$ENV_FILE"
+  else
+    echo "$VAR_VALUE" >> "$ENV_FILE"
+  fi
+done
+echo "   ✅ RPC/WS updated"
 
 echo ""
 echo "🔍 Syncing contract address from externalContracts.ts..."
@@ -38,7 +53,6 @@ echo "🔁 Replacing container..."
 docker stop "$CONTAINER_NAME" 2>/dev/null || true
 docker rm "$CONTAINER_NAME" 2>/dev/null || true
 
-# .env sets PORT=3002; map host 3002 → container 3002
 docker run -d \
   --name "$CONTAINER_NAME" \
   --env-file "$ENV_FILE" \
@@ -48,10 +62,17 @@ docker run -d \
 
 echo ""
 echo "⏳ Waiting for server to start..."
-sleep 8
+sleep 10
 
 echo "✅ Health check:"
-curl -s "$BACKEND_URL/health" | python3 -m json.tool
+HEALTH=$(curl -s "$BACKEND_URL/health")
+echo "$HEALTH" | python3 -m json.tool
+
+TREE_SIZE=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('treeSize',0))")
+if [ "$TREE_SIZE" = "0" ]; then
+  echo ""
+  echo "⚠️  WARNING: treeSize is 0 — backend may have wrong CONTRACT_ADDRESS or RPC issue"
+fi
 
 echo ""
 echo "✅ Circuit check:"

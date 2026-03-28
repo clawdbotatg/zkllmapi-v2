@@ -2639,13 +2639,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@noir-lang/acvm_js@npm:0.55.0":
-  version: 0.55.0
-  resolution: "@noir-lang/acvm_js@npm:0.55.0"
-  checksum: 02156f23718c917194aab78c5d5584b7e03768d90234fb40029ad3d81341c4aa73819be12b4ca664aaf0dec73b993f303dabcdbba3aaf89596190aba20ca9537
-  languageName: node
-  linkType: hard
-
 "@noir-lang/acvm_js@npm:1.0.0-beta.3":
   version: 1.0.0-beta.3
   resolution: "@noir-lang/acvm_js@npm:1.0.0-beta.3"
@@ -2664,39 +2657,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@noir-lang/noir_js@npm:^0.39.0":
-  version: 0.39.0
-  resolution: "@noir-lang/noir_js@npm:0.39.0"
-  dependencies:
-    "@noir-lang/acvm_js": 0.55.0
-    "@noir-lang/noirc_abi": 0.39.0
-    "@noir-lang/types": 0.39.0
-  checksum: bbed7618af5ffb055e7020686035fcf2d25ba0510f48654338192d2bb18cf7ca74403ea6f6ea713ff1d204436f9c2066eb5adf645f585b353d3c6f9d6ee38403
-  languageName: node
-  linkType: hard
-
-"@noir-lang/noirc_abi@npm:0.39.0":
-  version: 0.39.0
-  resolution: "@noir-lang/noirc_abi@npm:0.39.0"
-  dependencies:
-    "@noir-lang/types": 0.39.0
-  checksum: 6c9935f8ae2a718418dcd277fa3944f33c80087aceb5b2137d34a11eda13ddce34a6d21a7ebd72c90657ed530e726c5dead9b08043aba19478240c693d80887b
-  languageName: node
-  linkType: hard
-
 "@noir-lang/noirc_abi@npm:1.0.0-beta.3":
   version: 1.0.0-beta.3
   resolution: "@noir-lang/noirc_abi@npm:1.0.0-beta.3"
   dependencies:
     "@noir-lang/types": 1.0.0-beta.3
   checksum: 569a1f4e5eae8b6f3515d54a80870ee35bb7412fe33b12058b8895a3b1c9ad796917e1c02438af916047f969d558199cf29715f987613da07dc729da89a3b6ba
-  languageName: node
-  linkType: hard
-
-"@noir-lang/types@npm:0.39.0":
-  version: 0.39.0
-  resolution: "@noir-lang/types@npm:0.39.0"
-  checksum: a90901202b1c899c20c05997c639375e8e35af0d12847d2842b890b95b0f766c9105f4b364249c22f470cd57fffaecb5541f05c41f74b31145786fe62a5daba7
   languageName: node
   linkType: hard
 
@@ -3461,7 +3427,7 @@ __metadata:
   dependencies:
     "@aztec/bb.js": 0.82.0
     "@heroicons/react": ~2.1.5
-    "@noir-lang/noir_js": ^0.39.0
+    "@noir-lang/noir_js": 1.0.0-beta.3
     "@rainbow-me/rainbowkit": 2.2.9
     "@react-native-async-storage/async-storage": ~2.2.0
     "@scaffold-ui/components": ^0.1.8
@@ -5970,7 +5936,7 @@ __metadata:
   resolution: "@zkllmapi/backend@workspace:packages/backend"
   dependencies:
     "@aztec/bb.js": 0.82.0
-    "@noir-lang/noir_js": ^0.39.0
+    "@noir-lang/noir_js": 1.0.0-beta.3
     "@types/cors": ^2.8.17
     "@types/express": ^5.0.0
     "@types/node": ^22.0.0

@@ -5,7 +5,7 @@
 set -e
 
 CONTAINER_NAME="zk-v2-backend"
-HEALTH_URL="https://backend.v2.zkllmapi.com/health"
+BACKEND_URL="https://backend.v2.zkllmapi.com"
 
 cd ~/zkllmapi-v2
 
@@ -23,7 +23,7 @@ docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 
 echo ""
 echo "✅ Health check:"
-curl -s "$HEALTH_URL" | python3 -m json.tool
+curl -s "$BACKEND_URL/health" | python3 -m json.tool
 
 echo ""
 echo "💾 Disk usage:"

@@ -7,12 +7,27 @@ set -e
 CONTAINER_NAME="zk-v2-backend"
 IMAGE_NAME="zk-v2-backend"
 ENV_FILE="packages/backend/.env"
-HEALTH_URL="https://backend.v2.zkllmapi.com/health"
+BACKEND_URL="https://backend.v2.zkllmapi.com"
 
 cd ~/zkllmapi-v2
 
 echo "🔄 Pulling latest code..."
 git pull
+
+echo ""
+echo "🔍 Syncing contract address from externalContracts.ts..."
+CONTRACT=$(grep -oP 'address:\s*"(0x[0-9a-fA-F]+)"' packages/nextjs/contracts/externalContracts.ts | head -1 | grep -oP '0x[0-9a-fA-F]+')
+if [ -n "$CONTRACT" ]; then
+  echo "   Contract: $CONTRACT"
+  if grep -q "^CONTRACT_ADDRESS=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s/^CONTRACT_ADDRESS=.*/CONTRACT_ADDRESS=$CONTRACT/" "$ENV_FILE"
+  else
+    echo "CONTRACT_ADDRESS=$CONTRACT" >> "$ENV_FILE"
+  fi
+  echo "   ✅ .env updated"
+else
+  echo "   ⚠️  Could not extract contract address, keeping existing .env value"
+fi
 
 echo ""
 echo "🐳 Rebuilding Docker image..."
@@ -36,11 +51,11 @@ echo "⏳ Waiting for server to start..."
 sleep 8
 
 echo "✅ Health check:"
-curl -s "$HEALTH_URL" | python3 -m json.tool
+curl -s "$BACKEND_URL/health" | python3 -m json.tool
 
 echo ""
 echo "✅ Circuit check:"
-curl -s "$HEALTH_URL/../circuit" | head -c 100
+curl -s "$BACKEND_URL/circuit" | head -c 100
 echo ""
 
 echo ""

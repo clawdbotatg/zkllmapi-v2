@@ -985,7 +985,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
 
       res.json({
         token: tokenId,
-        balanceRemaining: tokenData?.balanceRemaining ?? 1.0,
+        balanceRemaining: tokenData?.balanceRemaining ?? INITIAL_BALANCE,
         expiresAt: Date.now() + TOKEN_TTL_SECONDS * 1000,
         response: veniceData,
       });

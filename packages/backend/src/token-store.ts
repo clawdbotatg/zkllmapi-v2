@@ -1,7 +1,7 @@
 /**
  * token-store.ts — Redis-backed conversation bearer tokens
  *
- * 1 credit = 1 chat session = $1.00 balance.
+ * 1 credit = 1 chat session = $0.05 balance.
  * The ZK proof is burned once at chat session start; subsequent messages
  * use the bearer token until the balance runs out or it expires (24h).
  *
@@ -20,7 +20,7 @@ const redis = new Redis({
 });
 
 export const TOKEN_TTL_SECONDS = 86400; // 24 hours
-export const INITIAL_BALANCE = 1.0; // USD
+export const INITIAL_BALANCE = 0.05; // USD — matches on-chain credit price
 
 export interface TokenData {
   balanceRemaining: number;

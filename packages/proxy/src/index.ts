@@ -32,6 +32,27 @@ app.get("/v1/models", (_req, res) => {
   });
 });
 
+// ─── POST /v1/conversation/end — abandon current session, start fresh next time
+app.post("/v1/conversation/end", (_req, res) => {
+  const tokenCredit = credits.find(
+    (c) => !c.spent && c.token && (c.tokenBalance ?? 0) > 0 && (c.tokenExpiry ?? 0) > Date.now(),
+  );
+  if (tokenCredit) {
+    const remaining = tokenCredit.tokenBalance?.toFixed(4) ?? "?";
+    credits = markSpent(credits, tokenCredit.commitment);
+    persistCredits();
+    console.log(`[proxy] conversation ended by user — credit marked spent ($${remaining} remaining)`);
+    res.json({ ended: true, balanceWas: tokenCredit.tokenBalance });
+  } else {
+    res.json({ ended: false, message: "no active conversation" });
+  }
+
+  checkAndBuy(() => credits, (newCredits) => {
+    credits = [...credits, ...newCredits];
+    persistCredits();
+  }).catch(console.error);
+});
+
 // ─── GET /health ──────────────────────────────────────────────
 app.get("/health", (_req, res) => {
   const unspent = getUnspentCredits(credits);

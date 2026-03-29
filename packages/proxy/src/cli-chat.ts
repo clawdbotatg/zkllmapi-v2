@@ -110,7 +110,7 @@ async function main() {
   console.log(`   Proofs:   ${health.proofQueue} pre-warmed`);
   console.log(`   Budget:   $0.05 per credit`);
   console.log("");
-  console.log("   /clear  reset conversation    /health  show status    /quit  exit\n");
+  console.log("   /new    new credit + session   /clear  clear history   /quit  exit\n");
 
   if (health.credits.unspent === 0 && health.proofQueue === 0) {
     console.log("   ⏳ No credits — proxy is buying, wait a moment and try again.\n");
@@ -127,10 +127,26 @@ async function main() {
       break;
     }
 
+    if (trimmed === "/new" || trimmed === "/n") {
+      try {
+        const endRes = await fetch(`${PROXY_URL}/v1/conversation/end`, { method: "POST" });
+        const endData = await endRes.json();
+        history.length = 0;
+        balance = null;
+        if (endData.ended) {
+          console.log(`   🔄 session ended ($${endData.balanceWas?.toFixed(4)} forfeited) — next message uses a new credit\n`);
+        } else {
+          console.log("   🔄 no active session — next message starts fresh\n");
+        }
+      } catch {
+        console.log("   ❌ proxy unreachable\n");
+      }
+      continue;
+    }
+
     if (trimmed === "/clear" || trimmed === "/c") {
       history.length = 0;
-      balance = null;
-      console.log("   🗑  conversation cleared\n");
+      console.log("   🗑  history cleared (same credit, balance unchanged)\n");
       continue;
     }
 

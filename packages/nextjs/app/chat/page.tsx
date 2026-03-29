@@ -31,7 +31,7 @@ const SYSTEM_PROMPT = `You are running inside the ZK LLM API chat interface at z
 Key facts about this project:
 - Model: zai-org-glm-5 (Z.AI's flagship, 198K context, reasoning-capable)
 - Hash function: Poseidon2 (ZK-friendly, used for Merkle tree and nullifier hashing)
-- How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to start a chat session anonymously. 1 credit = 1 chat session with a $1.00 balance. The ZK proof burns once at chat session start; subsequent messages use a bearer token until the balance is depleted.
+- How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to start a chat session anonymously. 1 credit = 1 chat session with a $0.05 balance. The ZK proof burns once at chat session start; subsequent messages use a bearer token until the balance is depleted.
 - Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each chat session starts with a fresh nullifier burn — there is no cryptographic link between separate sessions.
 - Contract addresses (Base mainnet): APICredits=0x5954..., CLAWDPricing=0x445D..., CLAWDRouter=0xCB42..., CLAWD token=0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07
 - Website: https://zkllmapi.com | GitHub: https://github.com/clawdbotatg/zk-api-credits
@@ -91,6 +91,7 @@ const ChatPage: NextPage = () => {
   const [proofStatus, setProofStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Conversation token state
   const [conversationToken, setConversationToken] = useState<string | null>(null);
@@ -423,6 +424,7 @@ const ChatPage: NextPage = () => {
       setProofStatus("");
     } finally {
       setIsSending(false);
+      setTimeout(() => textareaRef.current?.focus(), 0);
     }
   };
 
@@ -604,6 +606,7 @@ const ChatPage: NextPage = () => {
           </div>
           <div className="max-w-3xl mx-auto flex gap-3">
             <textarea
+              ref={textareaRef}
               className="flex-1 bg-[#111] border border-[#333] text-base-content font-mono text-sm px-4 py-3 focus:outline-none focus:border-primary/40 transition-colors resize-none min-h-[48px] max-h-[140px]"
               placeholder={
                 conversationEnded

@@ -10,7 +10,9 @@ import { privateKeyToAccount } from "viem/accounts";
 import { getPrivateKey } from "./config.js";
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  exposedHeaders: ["x-conversation-balance", "x-conversation-ended", "x-e2ee"],
+}));
 app.use(express.json({ limit: "10mb" }));
 
 const MODEL = "zai-org-glm-5";
@@ -55,24 +57,29 @@ app.post("/v1/chat/completions", async (req, res) => {
     return;
   }
 
-  // Determine if E2EE mode is requested
+  // Determine if E2EE mode is requested (e2ee- prefix triggers encryption)
   const e2eeMode = requestedModel ? isE2EEModel(requestedModel) : false;
-  const targetModel = requestedModel ?? MODEL;
+  const targetModel = e2eeMode ? requestedModel!.replace(/^e2ee-/, "") : (requestedModel ?? MODEL);
 
   // E2EE: encrypt messages before sending to our server
+  let e2eeActive = false;
   let callOptions: { model?: string; encryptedMessages?: string; e2eeHeaders?: Record<string, string> } = { model: targetModel };
   if (e2eeMode) {
     try {
       const { encryptedBody, e2eeHeaders } = await encryptChatRequest(req.body, targetModel);
-      callOptions = {
-        model: targetModel,
-        encryptedMessages: encryptedBody.encrypted_messages,
-        e2eeHeaders,
-      };
-      console.log(`[e2ee] messages encrypted, client pubkey: ${callOptions.e2eeHeaders!["X-Venice-TEE-Client-Pub-Key"].slice(0, 16)}...`);
+      if (e2eeHeaders["X-Venice-TEE-Client-Pub-Key"]) {
+        callOptions = {
+          model: targetModel,
+          encryptedMessages: encryptedBody.encrypted_messages,
+          e2eeHeaders,
+        };
+        e2eeActive = true;
+        console.log(`[e2ee] messages encrypted, client pubkey: ${e2eeHeaders["X-Venice-TEE-Client-Pub-Key"].slice(0, 16)}...`);
+      } else {
+        console.log(`[e2ee] attestation unavailable for ${targetModel} — sending without client-side encryption`);
+      }
     } catch (err: any) {
-      res.status(502).json({ error: { message: `E2EE setup failed: ${err.message}`, type: "server_error" } });
-      return;
+      console.error(`[e2ee] setup failed: ${err.message} — sending without client-side encryption`);
     }
   }
 
@@ -86,7 +93,7 @@ app.post("/v1/chat/completions", async (req, res) => {
   );
 
   if (tokenCredit) {
-    console.log(`[proxy] using conversation token (balance: $${tokenCredit.tokenBalance!.toFixed(4)}) ${e2eeMode ? "[E2EE 🔒]" : ""}`);
+    console.log(`[proxy] using conversation token (balance: $${tokenCredit.tokenBalance!.toFixed(4)}) ${e2eeActive ? "[E2EE 🔒]" : ""}`);
 
     let zkResponse: Response;
     try {
@@ -124,11 +131,16 @@ app.post("/v1/chat/completions", async (req, res) => {
       }
       persistCredits();
 
+      // Forward balance + E2EE headers to the caller
+      if (balance !== null) res.setHeader("x-conversation-balance", balance);
+      if (ended === "true") res.setHeader("x-conversation-ended", "true");
+      if (e2eeActive) res.setHeader("x-e2ee", "true");
+
       if (stream) {
         await streamResponse(zkResponse, res, targetModel);
       } else {
         let data = await zkResponse.json();
-        if (e2eeMode) {
+        if (e2eeActive) {
           try {
             const session = await getE2EESession(targetModel);
             data = decryptChatResponse(data, session);
@@ -179,7 +191,7 @@ app.post("/v1/chat/completions", async (req, res) => {
     }
   }
 
-  console.log(`[proxy] starting new conversation with commitment ${proof.commitment.slice(0, 12)}... ${e2eeMode ? "[E2EE 🔒]" : ""}`);
+  console.log(`[proxy] starting new conversation with commitment ${proof.commitment.slice(0, 12)}... ${e2eeActive ? "[E2EE 🔒]" : ""}`);
 
   // Use /v1/chat/start for single-RTT: proof + first message → token + response
   let zkResponse: Response;
@@ -206,16 +218,19 @@ app.post("/v1/chat/completions", async (req, res) => {
     credit.token = startData.token;
     credit.tokenBalance = startData.balanceRemaining;
     credit.tokenExpiry = startData.expiresAt;
-    // Don't mark spent — the conversation is just starting
     persistCredits();
   }
 
   console.log(`[proxy] conversation started — token issued, balance: $${startData.balanceRemaining?.toFixed(4)}`);
 
+  // Forward balance + E2EE headers to the caller
+  if (startData.balanceRemaining != null) res.setHeader("x-conversation-balance", String(startData.balanceRemaining));
+  if (e2eeActive) res.setHeader("x-e2ee", "true");
+
   // Return the embedded Venice response (or error if Venice failed)
   if (startData.response) {
     let data = startData.response;
-    if (e2eeMode) {
+    if (e2eeActive) {
       try {
         const session = await getE2EESession(targetModel);
         data = decryptChatResponse(data, session);

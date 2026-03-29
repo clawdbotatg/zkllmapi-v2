@@ -54,6 +54,7 @@
     "proxy:dev": "yarn workspace @zkllmapi/proxy dev",
     "proxy:build": "yarn workspace @zkllmapi/proxy build",
     "proxy:typecheck": "yarn workspace @zkllmapi/proxy typecheck",
+    "chat": "yarn workspace @zkllmapi/proxy chat",
     "circuits:compile": "yarn workspace @zkllmapi/circuits compile"
   },
   "devDependencies": {

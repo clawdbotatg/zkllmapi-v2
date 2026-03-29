@@ -221,9 +221,9 @@ async function buildHistoricalRoots(): Promise<void> {
   }
   treeSize = treeLeaves.length;
 
-  // Use the onchain root — the TypeScript tree builder produces a different
-  // root than Poseidon2IMT (Poseidon2 domain params differ between bb.js
-  // and Solidity). Trust the contract's root for validRoots.
+  const lastBlock = sorted[sorted.length - 1]?.blockNumber ?? 0n;
+
+  // Add onchain root (Solidity Poseidon2IMT — different from bb.js Poseidon2)
   try {
     const [, , contractRoot] = await publicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -232,10 +232,18 @@ async function buildHistoricalRoots(): Promise<void> {
     });
     const contractRootHex = rootToHex(contractRoot);
     currentRoot = contractRootHex;
-    validRoots.set(contractRootHex, sorted[sorted.length - 1]?.blockNumber ?? 0n);
-    console.log(`✓ Using onchain root: ${contractRootHex}`);
+    validRoots.set(contractRootHex, lastBlock);
+    console.log(`✓ Onchain root: ${contractRootHex}`);
   } catch (err) {
     console.error("Could not fetch onchain root:", err);
+  }
+
+  // Add compact root (bb.js Poseidon2 — matches Noir circuit / client proofs)
+  const compactRoot = await computeCompactRoot(treeLeaves);
+  if (compactRoot !== null) {
+    const compactRootHex = rootToHex(compactRoot);
+    validRoots.set(compactRootHex, lastBlock);
+    console.log(`✓ Compact root: ${compactRootHex}`);
   }
 
   console.log(
@@ -289,7 +297,7 @@ async function handleNewEvent(event: {
   treeLeaves.push(event.args.commitment);
   treeSize = treeLeaves.length;
 
-  // Fetch the new onchain root from the contract directly
+  // Add onchain root
   try {
     const [, , newRoot] = await publicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -299,9 +307,17 @@ async function handleNewEvent(event: {
     const newRootHex = rootToHex(newRoot);
     validRoots.set(newRootHex, event.blockNumber);
     currentRoot = newRootHex;
-    console.log(`New root from event: ${newRootHex}`);
+    console.log(`New onchain root: ${newRootHex}`);
   } catch (err) {
     console.error("Failed to fetch new onchain root:", err);
+  }
+
+  // Add compact root (matches what clients prove against via /tree)
+  const compactRoot = await computeCompactRoot(treeLeaves);
+  if (compactRoot !== null) {
+    const compactRootHex = rootToHex(compactRoot);
+    validRoots.set(compactRootHex, event.blockNumber);
+    console.log(`New compact root: ${compactRootHex}`);
   }
 
   if (event.blockNumber > lastProcessedBlock) lastProcessedBlock = event.blockNumber;

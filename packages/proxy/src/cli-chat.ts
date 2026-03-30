@@ -12,7 +12,7 @@ import "dotenv/config";
 import { createInterface } from "readline";
 
 const PROXY_URL = process.env.PROXY_URL ?? "http://localhost:3100";
-const MODEL = "e2ee-zai-org-glm-5";
+const MODEL = "e2ee-glm-5";
 
 const DIM = "\x1b[2m";
 const CYAN = "\x1b[36m";
@@ -37,6 +37,20 @@ function ask(q: string): Promise<string> {
   return new Promise(res => {
     rl.question(q, answer => res(answer));
   });
+}
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function startSpinner(label = "thinking"): () => void {
+  let i = 0;
+  const id = setInterval(() => {
+    process.stdout.write(`\r${DIM}   ${SPINNER_FRAMES[i % SPINNER_FRAMES.length]} ${label}...${RESET}  `);
+    i++;
+  }, 80);
+  return () => {
+    clearInterval(id);
+    process.stdout.write(`\r\x1b[K`);
+  };
 }
 
 async function getHealth(): Promise<any> {
@@ -161,10 +175,13 @@ async function main() {
       continue;
     }
 
+    const stopSpinner = startSpinner();
     try {
       const response = await sendMessage(trimmed);
+      stopSpinner();
       console.log(`\n${GREEN}🧠 ${response}${RESET}\n`);
     } catch (e: any) {
+      stopSpinner();
       console.error(`\n❌ ${e.message}\n`);
       history.pop();
     }

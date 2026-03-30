@@ -62,12 +62,14 @@ async function sendMessage(
   const proof = popProof()!;
 
   // E2EE encrypt the messages
-  const reqBody = { messages, model: MODEL, stream };
-  const { encryptedBody, e2eeHeaders } = await encryptChatRequest(reqBody, MODEL);
+  const e2eeResult = await encryptChatRequest(messages, MODEL);
+  const encryptedMessages = e2eeResult?.encryptedMessages ?? messages;
+  const e2eeHeaders = e2eeResult?.e2eeHeaders ?? {};
 
-  // Build final request body with proof + encrypted payload
   const body = {
-    ...encryptedBody,
+    messages: encryptedMessages,
+    model: MODEL,
+    stream,
     proof: proof.proofHex,
     publicInputs: proof.publicInputs,
     nullifier_hash: proof.nullifierHashHex,

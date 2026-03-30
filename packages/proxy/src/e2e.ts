@@ -189,11 +189,14 @@ async function main() {
   let responseContent: string | null = null
   responseContent = await runStep("5. Chat API call", async () => {
     const messages = [{ role: "user" as const, content: "Say 'hello' and nothing else." }]
-    const reqBody = { messages, model: MODEL, stream: false }
-    const { encryptedBody, e2eeHeaders } = await encryptChatRequest(reqBody, MODEL)
+    const e2eeResult = await encryptChatRequest(messages, MODEL)
+    const encryptedMessages = e2eeResult?.encryptedMessages ?? messages
+    const e2eeHeaders = e2eeResult?.e2eeHeaders ?? {}
 
     const body = {
-      ...encryptedBody,
+      messages: encryptedMessages,
+      model: MODEL,
+      stream: false,
       proof: proof!.proofHex,
       publicInputs: proof!.publicInputs,
       nullifier_hash: proof!.nullifierHashHex,

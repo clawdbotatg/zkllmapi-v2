@@ -4,8 +4,9 @@ import cors from "cors";
 import { PORT, BUY_THRESHOLD, BUY_CHUNK } from "./config.js";
 import { loadCredits, saveCredits, markSpent, getUnspentCredits } from "./credits.js";
 import { preWarm, popProof, queueDepth, checkAndBuy } from "./prove.js";
-import { callZkApi, callZkApiStart, callZkApiWithToken, buildOpenAIResponse, streamResponse } from "./adapter.js";
-import { encryptChatRequest, decryptChatResponse, getE2EESession, isE2EEModel } from "./e2ee.js";
+import { callZkApiStart, callZkApiWithToken, buildOpenAIResponse, streamResponse } from "./adapter.js";
+import { encryptChatRequest, decryptResponseChunks, isE2EEModel, isHexEncrypted, decryptChunk } from "./e2ee.js";
+import type { E2EESession } from "./e2ee.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { getPrivateKey } from "./config.js";
 
@@ -17,7 +18,6 @@ app.use(express.json({ limit: "10mb" }));
 
 const MODEL = "zai-org-glm-5";
 
-// In-memory credit state
 let credits = loadCredits();
 
 function persistCredits() {
@@ -32,7 +32,7 @@ app.get("/v1/models", (_req, res) => {
   });
 });
 
-// ─── POST /v1/conversation/end — abandon current session, start fresh next time
+// ─── POST /v1/conversation/end ────────────────────────────────
 app.post("/v1/conversation/end", (_req, res) => {
   const tokenCredit = credits.find(
     (c) => !c.spent && c.token && (c.tokenBalance ?? 0) > 0 && (c.tokenExpiry ?? 0) > Date.now(),
@@ -69,6 +69,46 @@ app.get("/health", (_req, res) => {
   });
 });
 
+/**
+ * Decrypt Venice response data if E2EE is active.
+ * Handles both `encrypted_chunks` array (from backend SSE aggregation)
+ * and single hex-encrypted content.
+ */
+function decryptVeniceResponse(data: any, session: E2EESession): any {
+  if (data.encrypted_chunks && Array.isArray(data.encrypted_chunks)) {
+    const plaintext = decryptResponseChunks(data.encrypted_chunks, session);
+    console.log(`[e2ee] response decrypted (${data.encrypted_chunks.length} chunks) ✅`);
+    return {
+      ...data,
+      encrypted_chunks: undefined,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: plaintext },
+        finish_reason: data.choices?.[0]?.finish_reason ?? "stop",
+      }],
+    };
+  }
+
+  const content = data.choices?.[0]?.message?.content;
+  if (content && isHexEncrypted(content)) {
+    try {
+      const plaintext = decryptChunk(content, session.clientPrivateKey);
+      console.log(`[e2ee] response decrypted (single content) ✅`);
+      return {
+        ...data,
+        choices: [{
+          ...data.choices[0],
+          message: { ...data.choices[0].message, content: plaintext },
+        }],
+      };
+    } catch (err: any) {
+      console.error(`[e2ee] content decryption failed: ${err.message}`);
+    }
+  }
+
+  return data;
+}
+
 // ─── POST /v1/chat/completions ────────────────────────────────
 app.post("/v1/chat/completions", async (req, res) => {
   const { messages, stream = false, model: requestedModel } = req.body;
@@ -78,29 +118,24 @@ app.post("/v1/chat/completions", async (req, res) => {
     return;
   }
 
-  // Determine if E2EE mode is requested (e2ee- prefix triggers encryption)
   const e2eeMode = requestedModel ? isE2EEModel(requestedModel) : false;
-  const targetModel = e2eeMode ? requestedModel!.replace(/^e2ee-/, "") : (requestedModel ?? MODEL);
+  // For E2EE, keep the e2ee- prefix — the backend needs it to select the right Venice model
+  const targetModel = e2eeMode ? requestedModel! : (requestedModel ?? MODEL);
 
-  // E2EE: encrypt messages before sending to our server
   let e2eeActive = false;
-  let callOptions: { model?: string; encryptedMessages?: string; e2eeHeaders?: Record<string, string> } = { model: targetModel };
+  let e2eeSession: E2EESession | null = null;
+  let callMessages = messages;
+  let callOptions: { model?: string; e2eeHeaders?: Record<string, string> } = { model: targetModel };
+
   if (e2eeMode) {
-    try {
-      const { encryptedBody, e2eeHeaders } = await encryptChatRequest(req.body, targetModel);
-      if (e2eeHeaders["X-Venice-TEE-Client-Pub-Key"]) {
-        callOptions = {
-          model: targetModel,
-          encryptedMessages: encryptedBody.encrypted_messages,
-          e2eeHeaders,
-        };
-        e2eeActive = true;
-        console.log(`[e2ee] messages encrypted, client pubkey: ${e2eeHeaders["X-Venice-TEE-Client-Pub-Key"].slice(0, 16)}...`);
-      } else {
-        console.log(`[e2ee] attestation unavailable for ${targetModel} — sending without client-side encryption`);
-      }
-    } catch (err: any) {
-      console.error(`[e2ee] setup failed: ${err.message} — sending without client-side encryption`);
+    const result = await encryptChatRequest(messages, targetModel);
+    if (result) {
+      callMessages = result.encryptedMessages;
+      callOptions = { model: targetModel, e2eeHeaders: result.e2eeHeaders };
+      e2eeSession = result.session;
+      e2eeActive = true;
+    } else {
+      console.log(`[e2ee] encryption unavailable for ${targetModel} — sending plaintext`);
     }
   }
 
@@ -118,7 +153,7 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     let zkResponse: Response;
     try {
-      zkResponse = await callZkApiWithToken(tokenCredit.token!, messages, stream, callOptions);
+      zkResponse = await callZkApiWithToken(tokenCredit.token!, callMessages, stream, callOptions);
     } catch (err: any) {
       res.status(502).json({ error: { message: `ZK API unreachable: ${err.message}`, type: "server_error" } });
       return;
@@ -126,7 +161,6 @@ app.post("/v1/chat/completions", async (req, res) => {
 
     if (!zkResponse.ok) {
       if (zkResponse.status === 401 || zkResponse.status === 402) {
-        // Token expired/depleted — clear it and retry with proof
         console.log(`[proxy] token expired/depleted (${zkResponse.status}) — will start new conversation`);
         credits = markSpent(credits, tokenCredit.commitment);
         persistCredits();
@@ -139,20 +173,16 @@ app.post("/v1/chat/completions", async (req, res) => {
         return;
       }
     } else {
-      // Update token balance from response headers
       const balance = zkResponse.headers.get("x-conversation-balance");
       const ended = zkResponse.headers.get("x-conversation-ended");
 
-      if (balance !== null) {
-        tokenCredit.tokenBalance = parseFloat(balance);
-      }
+      if (balance !== null) tokenCredit.tokenBalance = parseFloat(balance);
       if (ended === "true") {
         credits = markSpent(credits, tokenCredit.commitment);
         console.log(`[proxy] conversation ended — credit marked spent`);
       }
       persistCredits();
 
-      // Forward balance + E2EE headers to the caller
       if (balance !== null) res.setHeader("x-conversation-balance", balance);
       if (ended === "true") res.setHeader("x-conversation-ended", "true");
       if (e2eeActive) res.setHeader("x-e2ee", "true");
@@ -161,19 +191,12 @@ app.post("/v1/chat/completions", async (req, res) => {
         await streamResponse(zkResponse, res, targetModel);
       } else {
         let data = await zkResponse.json();
-        if (e2eeActive) {
-          try {
-            const session = await getE2EESession(targetModel);
-            data = decryptChatResponse(data, session);
-            console.log(`[e2ee] response decrypted ✅`);
-          } catch (err: any) {
-            console.error(`[e2ee] response decryption failed:`, err.message);
-          }
+        if (e2eeActive && e2eeSession) {
+          data = decryptVeniceResponse(data, e2eeSession);
         }
         res.json(buildOpenAIResponse(data, targetModel));
       }
 
-      // Trigger background replenishment if needed
       checkAndBuy(() => credits, (newCredits) => {
         credits = [...credits, ...newCredits];
         persistCredits();
@@ -183,7 +206,6 @@ app.post("/v1/chat/completions", async (req, res) => {
   }
 
   // ─── Mode 2: Proof-based flow (start new conversation) ────
-  // Get a ready proof
   let proof = popProof();
 
   if (!proof) {
@@ -214,10 +236,9 @@ app.post("/v1/chat/completions", async (req, res) => {
 
   console.log(`[proxy] starting new conversation with commitment ${proof.commitment.slice(0, 12)}... ${e2eeActive ? "[E2EE 🔒]" : ""}`);
 
-  // Use /v1/chat/start for single-RTT: proof + first message → token + response
   let zkResponse: Response;
   try {
-    zkResponse = await callZkApiStart(proof, messages, callOptions);
+    zkResponse = await callZkApiStart(proof, callMessages, callOptions);
   } catch (err: any) {
     res.status(502).json({ error: { message: `ZK API unreachable: ${err.message}`, type: "server_error" } });
     return;
@@ -225,15 +246,71 @@ app.post("/v1/chat/completions", async (req, res) => {
 
   if (!zkResponse.ok) {
     const errBody = await zkResponse.json().catch(() => ({}));
+    const errMsg = (errBody as any).error ?? "ZK API error";
+
+    if (zkResponse.status === 403) {
+      console.log(`[proxy] proof rejected for ${proof.commitment.slice(0, 12)}: ${errMsg} — marking spent and retrying`);
+      credits = markSpent(credits, proof.commitment);
+      persistCredits();
+
+      let nextProof = popProof();
+      if (!nextProof) {
+        const remaining = getUnspentCredits(credits);
+        if (remaining.length > 0) {
+          console.log(`[proxy] no pre-warmed proof — generating fresh proof for ${remaining[0].commitment.slice(0, 12)}...`);
+          const { generateProof } = await import("./prove.js");
+          try { nextProof = await generateProof(remaining[0]); } catch {}
+        }
+      }
+
+      if (nextProof) {
+        console.log(`[proxy] retrying with proof: ${nextProof.commitment.slice(0, 12)}...`);
+        try {
+          const retryResponse = await callZkApiStart(nextProof, callMessages, callOptions);
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            const retryCred = credits.find((c) => c.commitment === nextProof!.commitment);
+            if (retryCred) {
+              retryCred.token = retryData.token;
+              retryCred.tokenBalance = retryData.balanceRemaining;
+              retryCred.tokenExpiry = retryData.expiresAt;
+              persistCredits();
+            }
+            console.log(`[proxy] retry succeeded — balance: $${retryData.balanceRemaining?.toFixed(4)}`);
+            if (retryData.balanceRemaining != null) res.setHeader("x-conversation-balance", String(retryData.balanceRemaining));
+            if (e2eeActive) res.setHeader("x-e2ee", "true");
+            if (retryData.response) {
+              let data = retryData.response;
+              if (e2eeActive && e2eeSession) {
+                data = decryptVeniceResponse(data, e2eeSession);
+              }
+              res.json(buildOpenAIResponse(data, targetModel));
+            } else {
+              res.status(502).json({ error: { message: retryData.veniceError ?? "Venice failed on retry", type: "server_error" } });
+            }
+            checkAndBuy(() => credits, (nc) => { credits = [...credits, ...nc]; persistCredits(); }).catch(console.error);
+            return;
+          }
+          const retryErr = await retryResponse.json().catch(() => ({}));
+          res.status(retryResponse.status).json({ error: { message: (retryErr as any).error ?? "ZK API error on retry", type: "server_error" } });
+        } catch (retryErr: any) {
+          res.status(502).json({ error: { message: `Retry failed: ${retryErr.message}`, type: "server_error" } });
+        }
+      } else {
+        res.status(503).json({ error: { message: "Credit was stale and no backup proofs ready — try again in ~30 seconds.", type: "service_unavailable" } });
+      }
+      checkAndBuy(() => credits, (nc) => { credits = [...credits, ...nc]; persistCredits(); }).catch(console.error);
+      return;
+    }
+
     res.status(zkResponse.status).json({
-      error: { message: (errBody as any).error ?? "ZK API error", type: "server_error" },
+      error: { message: errMsg, type: "server_error" },
     });
     return;
   }
 
   const startData = await zkResponse.json();
 
-  // Store conversation token on the credit
   const credit = credits.find((c) => c.commitment === proof!.commitment);
   if (credit) {
     credit.token = startData.token;
@@ -244,25 +321,16 @@ app.post("/v1/chat/completions", async (req, res) => {
 
   console.log(`[proxy] conversation started — token issued, balance: $${startData.balanceRemaining?.toFixed(4)}`);
 
-  // Forward balance + E2EE headers to the caller
   if (startData.balanceRemaining != null) res.setHeader("x-conversation-balance", String(startData.balanceRemaining));
   if (e2eeActive) res.setHeader("x-e2ee", "true");
 
-  // Return the embedded Venice response (or error if Venice failed)
   if (startData.response) {
     let data = startData.response;
-    if (e2eeActive) {
-      try {
-        const session = await getE2EESession(targetModel);
-        data = decryptChatResponse(data, session);
-        console.log(`[e2ee] response decrypted ✅`);
-      } catch (err: any) {
-        console.error(`[e2ee] response decryption failed:`, err.message);
-      }
+    if (e2eeActive && e2eeSession) {
+      data = decryptVeniceResponse(data, e2eeSession);
     }
     res.json(buildOpenAIResponse(data, targetModel));
   } else {
-    // Venice failed but token was issued — return an error response
     res.status(502).json({
       error: {
         message: startData.veniceError ?? "Venice failed during conversation start — retry your message",
@@ -271,7 +339,6 @@ app.post("/v1/chat/completions", async (req, res) => {
     });
   }
 
-  // Trigger background replenishment
   checkAndBuy(() => credits, (newCredits) => {
     credits = [...credits, ...newCredits];
     persistCredits();

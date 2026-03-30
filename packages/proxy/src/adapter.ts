@@ -15,42 +15,54 @@ export interface OpenAIChatRequest {
   [key: string]: unknown;
 }
 
-export async function callZkApi(
-  proof: ReadyProof,
+export interface E2EECallOptions {
+  model?: string;
+  e2eeHeaders?: Record<string, string>;
+}
+
+// v2: /v1/chat/start — burns nullifier, creates bearer token, returns first response
+export async function callZkApiStart(
+  proof: { proofHex: string; publicInputs: string[]; nullifierHashHex: string; rootHex: string; depth: number },
   messages: OpenAIMessage[],
-  stream: boolean,
-  options?: {
-    model?: string;
-    // E2EE: if set, messages have been pre-encrypted — send encrypted_messages instead
-    encryptedMessages?: string;
-    e2eeHeaders?: Record<string, string>;
-  }
+  options?: E2EECallOptions,
 ): Promise<Response> {
-  const body: Record<string, any> = {
+  const body: Record<string, unknown> = {
     proof: proof.proofHex,
     publicInputs: proof.publicInputs,
     nullifier_hash: proof.nullifierHashHex,
     root: proof.rootHex,
     depth: proof.depth,
-    stream,
+    messages,
   };
-
   if (options?.model) body.model = options.model;
 
-  if (options?.encryptedMessages) {
-    // E2EE mode: server will forward this blob + headers to Venice blind
-    body.encrypted_messages = options.encryptedMessages;
-    body.messages = []; // empty — server must not try to read them
-  } else {
-    body.messages = messages;
-  }
-
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (options?.e2eeHeaders) {
-    Object.assign(headers, options.e2eeHeaders);
-  }
+  if (options?.e2eeHeaders) Object.assign(headers, options.e2eeHeaders);
 
-  return fetch(`${API_URL}/v1/chat`, {
+  return fetch(API_URL + "/v1/chat/start", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+// v2: /v1/chat — bearer token continuation
+export async function callZkApiWithToken(
+  token: string,
+  messages: OpenAIMessage[],
+  stream: boolean,
+  options?: E2EECallOptions,
+): Promise<Response> {
+  const body: Record<string, unknown> = { messages, stream };
+  if (options?.model) body.model = options.model;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  if (options?.e2eeHeaders) Object.assign(headers, options.e2eeHeaders);
+
+  return fetch(API_URL + "/v1/chat", {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -117,51 +129,4 @@ export async function streamResponse(
     res.write("data: [DONE]\n\n");
     res.end();
   }
-}
-
-// v2: /v1/chat/start — burns nullifier, creates bearer token
-export async function callZkApiStart(
-  proof: { proofHex: string; publicInputs: string[]; nullifierHashHex: string; rootHex: string; depth: number },
-  messages: OpenAIMessage[],
-  options?: { model?: string; encryptedMessages?: string; e2eeHeaders?: Record<string, string> },
-): Promise<Response> {
-  const body: Record<string, unknown> = {
-    proof: proof.proofHex,
-    publicInputs: proof.publicInputs,
-    nullifier_hash: proof.nullifierHashHex,
-    root: proof.rootHex,
-    depth: proof.depth,
-    messages,
-  };
-  if (options?.model) body.model = options.model;
-  if (options?.encryptedMessages) {
-    (body as Record<string, unknown>).encrypted_messages = options.encryptedMessages;
-    (body as Record<string, unknown>).messages = [];
-  }
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (options?.e2eeHeaders) Object.assign(headers, options.e2eeHeaders);
-  return fetch(API_URL + "/v1/chat/start", {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-}
-
-// v2: /v1/chat — bearer token continuation
-export async function callZkApiWithToken(
-  token: string,
-  messages: OpenAIMessage[],
-  stream: boolean,
-  options?: { model?: string },
-): Promise<Response> {
-  const body: Record<string, unknown> = { messages, stream };
-  if (options?.model) body.model = options.model;
-  return fetch(API_URL + "/v1/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
 }

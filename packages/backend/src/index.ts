@@ -411,19 +411,28 @@ async function migrateNullifiersFromFile(): Promise<number> {
   }
 }
 
-// ─── Model (locked for demo — one model for all conversations) ─
+// ─── Model ───────────────────────────────────────────────────
 const MODEL = process.env.VENICE_MODEL || "zai-org-glm-5";
+const E2EE_MODEL = process.env.VENICE_E2EE_MODEL || "e2ee-glm-5";
 
-// ─── Venice Pricing (zai-org-glm-5) ──────────────────────────
-const INPUT_PRICE_PER_TOKEN = 1.00 / 1_000_000;   // $1.00 per 1M input tokens
-const OUTPUT_PRICE_PER_TOKEN = 3.20 / 1_000_000;   // $3.20 per 1M output tokens
+// ─── Venice Pricing ──────────────────────────────────────────
+const PRICING: Record<string, { input: number; output: number }> = {
+  "zai-org-glm-5":  { input: 1.00 / 1_000_000, output: 3.20 / 1_000_000 },
+  "e2ee-glm-5":     { input: 1.10 / 1_000_000, output: 4.15 / 1_000_000 },
+};
+const DEFAULT_PRICING = PRICING[MODEL] ?? PRICING["zai-org-glm-5"];
 const MAX_COST_USD = 0.05;
 const COST_MULTIPLIER = parseFloat(process.env.COST_MULTIPLIER || "1.0");
 
-function computeVeniceCost(usage: { prompt_tokens?: number; completion_tokens?: number }): number {
-  const inputCost = (usage.prompt_tokens ?? 0) * INPUT_PRICE_PER_TOKEN;
-  const outputCost = (usage.completion_tokens ?? 0) * OUTPUT_PRICE_PER_TOKEN;
+function computeVeniceCost(usage: { prompt_tokens?: number; completion_tokens?: number }, isE2EE = false): number {
+  const pricing = isE2EE ? (PRICING[E2EE_MODEL] ?? DEFAULT_PRICING) : DEFAULT_PRICING;
+  const inputCost = (usage.prompt_tokens ?? 0) * pricing.input;
+  const outputCost = (usage.completion_tokens ?? 0) * pricing.output;
   return (inputCost + outputCost) * COST_MULTIPLIER;
+}
+
+function detectE2EEFromHeaders(req: express.Request): boolean {
+  return !!req.headers["x-venice-tee-client-pub-key"];
 }
 
 // ─── Express App ──────────────────────────────────────────────
@@ -643,8 +652,8 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
   const ts = () => `+${Date.now() - t0}ms`;
   console.log(`[${reqId}] POST /v1/chat/key — received`);
 
-  const { apiKey, messages, encrypted_messages } = req.body;
-  const isE2EE = !!encrypted_messages;
+  const { apiKey, messages } = req.body;
+  const isE2EE = detectE2EEFromHeaders(req);
 
   // ─── Decode API Key ─────────────────────────────────────
   const decoded = decodeApiKey(apiKey);
@@ -655,8 +664,8 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
   const { nullifier, secret, commitment } = decoded;
   console.log(`[${reqId}] API key decoded, commitment=${commitment.slice(0, 12)}... (${ts()})`);
 
-  if (!isE2EE && (!messages || !Array.isArray(messages))) {
-    res.status(400).json({ error: "Missing required field: messages (or encrypted_messages for E2EE)" });
+  if (!messages || !Array.isArray(messages)) {
+    res.status(400).json({ error: "Missing required field: messages" });
     return;
   }
 
@@ -806,12 +815,14 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
         if (val) veniceHeaders[h] = val;
       }
 
-      const veniceBody: Record<string, any> = { model: MODEL, stream: false };
+      const veniceModel = isE2EE ? E2EE_MODEL : MODEL;
+      const veniceBody: Record<string, any> = {
+        model: veniceModel,
+        messages,
+        stream: isE2EE,
+      };
       if (isE2EE) {
-        veniceBody.encrypted_messages = encrypted_messages;
-        veniceBody.messages = [];
-      } else {
-        veniceBody.messages = messages;
+        veniceBody.stream_options = { include_usage: true };
       }
 
       const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
@@ -831,7 +842,17 @@ app.post("/v1/chat/key", chatLimiter, async (req, res) => {
         return;
       }
 
-      const veniceData = await veniceResponse.json();
+      let veniceData: any;
+      if (isE2EE) {
+        const { chunks, usage } = await aggregateSSEStream(veniceResponse, reqId);
+        veniceData = {
+          choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+          usage: usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          encrypted_chunks: chunks,
+        };
+      } else {
+        veniceData = await veniceResponse.json();
+      }
       const totalMs = Date.now() - t0;
       console.log(`[${reqId}] ✅ done — Venice: ${veniceMs}ms | total: ${totalMs}ms`);
 
@@ -892,17 +913,16 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
     encrypted_messages,
   } = req.body;
 
-  if (req.body.model && req.body.model !== MODEL) {
+  const isE2EE = detectE2EEFromHeaders(req) || !!encrypted_messages;
+  if (req.body.model && req.body.model !== MODEL && !isE2EE) {
     console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
   }
-
-  const isE2EE = !!encrypted_messages;
 
   if (!proof || !nullifier_hash || !root || depth === undefined) {
     res.status(400).json({ error: "Missing required fields: proof, nullifier_hash, root, depth" });
     return;
   }
-  if (!isE2EE && (!messages || !Array.isArray(messages))) {
+  if (!messages || !Array.isArray(messages)) {
     res.status(400).json({ error: "Missing required field: messages" });
     return;
   }
@@ -969,7 +989,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
 
     console.log(`[${reqId}] calling Venice (${ts()})${isE2EE ? " [E2EE 🔒]" : ""}`);
     try {
-      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, null, isE2EE);
       const totalMs = Date.now() - t0;
 
       if (costUsd > 0) {
@@ -1028,14 +1048,19 @@ function extractBearerToken(req: express.Request): string | null {
 /**
  * Call Venice and return the response data.
  * Shared between token-based and proof-based flows.
+ *
+ * E2EE mode (detected via headers): uses E2EE model + streaming (required by Venice).
+ * Aggregates SSE chunks into a normal response with encrypted_chunks for proxy decryption.
  */
 async function callVenice(
   req: express.Request,
   reqId: string,
   messages: any,
-  encrypted_messages: any,
-  isE2EE: boolean,
+  _encrypted_messages: any,
+  _isE2EELegacy: boolean,
 ): Promise<{ veniceData: any; costUsd: number; veniceMs: number }> {
+  const isE2EE = detectE2EEFromHeaders(req) || _isE2EELegacy;
+
   const veniceHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${VENICE_API_KEY}`,
@@ -1050,32 +1075,27 @@ async function callVenice(
     if (val) veniceHeaders[h] = val;
   }
 
-  let estimatedInputBytes: number;
-  if (isE2EE && encrypted_messages) {
-    estimatedInputBytes = Buffer.byteLength(
-      typeof encrypted_messages === "string" ? encrypted_messages : JSON.stringify(encrypted_messages),
-      "utf8"
-    );
-  } else {
-    estimatedInputBytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
-  }
+  const estimatedInputBytes = Buffer.byteLength(JSON.stringify(messages), "utf8");
   const estimatedInputTokens = Math.ceil(estimatedInputBytes / 4);
-  const estimatedInputCost = estimatedInputTokens * INPUT_PRICE_PER_TOKEN;
+  const pricing = isE2EE ? (PRICING[E2EE_MODEL] ?? DEFAULT_PRICING) : DEFAULT_PRICING;
+  const estimatedInputCost = estimatedInputTokens * pricing.input;
 
   if (estimatedInputCost > MAX_COST_USD) {
-    const maxBytes = Math.floor((MAX_COST_USD / INPUT_PRICE_PER_TOKEN) * 4);
+    const maxBytes = Math.floor((MAX_COST_USD / pricing.input) * 4);
     throw Object.assign(
       new Error(`Request too large — max ~${maxBytes.toLocaleString()} bytes ($${MAX_COST_USD} budget)`),
       { statusCode: 400 },
     );
   }
 
-  const veniceBody: Record<string, any> = { model: MODEL, stream: false };
+  const veniceModel = isE2EE ? E2EE_MODEL : MODEL;
+  const veniceBody: Record<string, any> = {
+    model: veniceModel,
+    messages,
+    stream: isE2EE,
+  };
   if (isE2EE) {
-    veniceBody.encrypted_messages = encrypted_messages;
-    veniceBody.messages = [];
-  } else {
-    veniceBody.messages = messages;
+    veniceBody.stream_options = { include_usage: true };
   }
 
   const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
@@ -1094,10 +1114,61 @@ async function callVenice(
     throw Object.assign(new Error("Venice API error"), { statusCode: 502 });
   }
 
-  const veniceData = await veniceResponse.json();
-  const costUsd = veniceData?.usage ? computeVeniceCost(veniceData.usage) : 0;
+  if (isE2EE) {
+    const { chunks, usage } = await aggregateSSEStream(veniceResponse, reqId);
+    const veniceData: Record<string, any> = {
+      choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+      usage: usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      encrypted_chunks: chunks,
+    };
+    const costUsd = usage ? computeVeniceCost(usage, true) : 0;
+    return { veniceData, costUsd, veniceMs };
+  }
 
+  const veniceData = await veniceResponse.json();
+  const costUsd = veniceData?.usage ? computeVeniceCost(veniceData.usage, false) : 0;
   return { veniceData, costUsd, veniceMs };
+}
+
+/**
+ * Read a Venice SSE stream and aggregate encrypted content chunks + usage.
+ */
+async function aggregateSSEStream(
+  response: Response,
+  reqId: string,
+): Promise<{ chunks: string[]; usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null }> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let usage = null;
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+
+      try {
+        const parsed = JSON.parse(data);
+        const content = parsed.choices?.[0]?.delta?.content;
+        if (content) chunks.push(content);
+        if (parsed.usage) usage = parsed.usage;
+      } catch {
+        // skip malformed chunks
+      }
+    }
+  }
+
+  console.log(`[${reqId}] E2EE stream: collected ${chunks.length} encrypted chunks`);
+  return { chunks, usage };
 }
 
 /**
@@ -1122,10 +1193,10 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     // ─── Token-based flow: no ZK proof needed ───────────────
     console.log(`[${reqId}] POST /v1/chat [token] — ${bearerToken.slice(0, 16)}...`);
 
-    const { messages, encrypted_messages } = req.body;
-    const isE2EE = !!encrypted_messages;
+    const { messages } = req.body;
+    const isE2EE = detectE2EEFromHeaders(req);
 
-    if (!isE2EE && (!messages || !Array.isArray(messages))) {
+    if (!messages || !Array.isArray(messages)) {
       res.status(400).json({ error: "Missing required field: messages" });
       return;
     }
@@ -1144,7 +1215,7 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     console.log(`[${reqId}] token valid, balance: $${tokenData.balanceRemaining.toFixed(6)} (${ts()})`);
 
     try {
-      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, null, isE2EE);
 
       let balanceRemaining = tokenData.balanceRemaining;
       let conversationEnded = false;
@@ -1194,18 +1265,14 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     encrypted_messages,
   } = req.body;
 
-  if (req.body.model && req.body.model !== MODEL) {
-    console.log(`[${reqId}] client requested model "${req.body.model}" — ignored, using "${MODEL}"`);
-  }
-
-  const isE2EE = !!encrypted_messages;
+  const isE2EE = detectE2EEFromHeaders(req) || !!encrypted_messages;
 
   if (!proof || !nullifier_hash || !root || depth === undefined) {
     res.status(400).json({ error: "Missing required fields: proof, nullifier_hash, root, depth (or provide a bearer token)" });
     return;
   }
-  if (!isE2EE && (!messages || !Array.isArray(messages))) {
-    res.status(400).json({ error: "Missing required field: messages (or encrypted_messages for E2EE)" });
+  if (!messages || !Array.isArray(messages)) {
+    res.status(400).json({ error: "Missing required field: messages" });
     return;
   }
 
@@ -1254,7 +1321,7 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     }
 
     try {
-      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, null, isE2EE);
       const totalMs = Date.now() - t0;
 
       if (veniceData?.usage) {

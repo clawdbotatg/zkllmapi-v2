@@ -58,14 +58,6 @@ This generates:
 nargo test
 ```
 
-## Generate Verifier Contract
-
-```bash
-nargo compile --output-verifier
-```
-
-This outputs `UltraVerifier.sol` which can replace the stub in `packages/foundry/contracts/UltraVerifier.sol`.
-
 ## Circuit Dependencies
 
 - `binary_merkle_root` from [zk-kit.noir](https://github.com/privacy-scaling-explorations/zk-kit.noir) — Merkle proof verification

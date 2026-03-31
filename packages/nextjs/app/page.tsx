@@ -144,38 +144,34 @@ const Home: NextPage = () => {
 
           {/* Code snippet */}
           <div className="mb-20">
-            <p className="text-xs font-mono text-base-content/30 mb-4 tracking-widest">DIRECT API ACCESS</p>
+            <p className="text-xs font-mono text-base-content/30 mb-4 tracking-widest">
+              LOCAL PROXY (OpenAI-COMPATIBLE)
+            </p>
             <div className="border border-[#333] bg-black/90 backdrop-blur-sm overflow-x-auto">
               <div className="border-b border-[#333] px-4 py-2 flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-[#333]"></div>
                 <div className="w-2 h-2 rounded-full bg-[#333]"></div>
                 <div className="w-2 h-2 rounded-full bg-[#333]"></div>
-                <span className="text-xs font-mono text-base-content/30 ml-2">example.sh</span>
+                <span className="text-xs font-mono text-base-content/30 ml-2">terminal</span>
               </div>
-              <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Buy a credit at zkllmapi.com/buy — each credit starts a chat session ($1.00 balance).
+              <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Run the OpenAI-compatible proxy locally.
+# It auto-buys credits, generates ZK proofs client-side, and manages sessions.
+git clone https://github.com/clawdbotatg/zkllmapi-proxy
+cd zkllmapi-proxy && npm install && npm start
 
-# Step 1: Start a chat session (uses API key, server generates ZK proof for you)
-curl -X POST https://backend.zkllmapi.com/v1/chat/key \\
+# Point any OpenAI client at the proxy:
+curl -X POST http://localhost:3100/v1/chat/completions \\
   -H 'Content-Type: application/json' \\
   -d '{
-    "apiKey": "zk-llm-{your-key}",
+    "model": "zai-org-glm-5",
     "messages": [{"role": "user", "content": "Hello"}]
   }'
-# → Returns: { token: "conv_...", balanceRemaining: 1.0, response: "..." }
 
-# Step 2: Continue the chat session (no proof needed, uses bearer token)
-curl -X POST https://backend.zkllmapi.com/v1/chat \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer conv_...' \\
-  -d '{ "messages": [{"role": "user", "content": "Follow-up question"}] }'
-# → Returns LLM response; check x-conversation-balance header for remaining balance
+# Works with any OpenAI-compatible SDK — just set the base URL:
+# openai.base_url = "http://localhost:3100/v1"
 
-# Or run the OpenAI-compatible proxy locally (auto-buys credits, pre-warms proofs):
-# git clone https://github.com/clawdbotatg/zkllmapi-proxy && npm install && npm start
-# Then point any OpenAI client at http://localhost:3100/v1/chat/completions
-
-# For maximum privacy (DIY ZK proof in your browser):
-# See https://zkllmapi.com/fork for the circuit + integration guide.`}</pre>
+# 1 credit = 1 chat session. ZK proof is generated locally —
+# the server verifies it but never learns your identity.`}</pre>
             </div>
           </div>
 

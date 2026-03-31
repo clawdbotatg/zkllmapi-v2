@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { NextPage } from "next";
 import externalContracts from "~~/contracts/externalContracts";
+import {
+  type E2EESession,
+  buildE2EEHeaders,
+  decryptResponseChunks,
+  encryptMessages,
+  fetchAttestation,
+} from "~~/utils/e2ee";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
@@ -99,6 +106,10 @@ const ChatPage: NextPage = () => {
   const [tokenExpiry, setTokenExpiry] = useState<number>(0);
   const [conversationEnded, setConversationEnded] = useState(false);
 
+  // E2EE session (cached across messages, reset on new conversation)
+  const e2eeSessionRef = useRef<E2EESession | null>(null);
+  const [e2eeActive, setE2eeActive] = useState(false);
+
   const availableCredits = credits.filter(c => !c.spent);
   const hasActiveConversation = conversationToken && tokenBalance > 0 && tokenExpiry > Date.now();
 
@@ -139,12 +150,22 @@ const ChatPage: NextPage = () => {
     }
   }, [messages]);
 
+  async function getE2EESession(): Promise<E2EESession> {
+    if (e2eeSessionRef.current) return e2eeSessionRef.current;
+    const session = await fetchAttestation(API_URL);
+    e2eeSessionRef.current = session;
+    setE2eeActive(true);
+    return session;
+  }
+
   const clearChat = () => {
     setMessages([]);
     setConversationToken(null);
     setTokenBalance(0);
     setTokenExpiry(0);
     setConversationEnded(false);
+    e2eeSessionRef.current = null;
+    setE2eeActive(false);
     localStorage.removeItem(`zk-chat-history-${API_CREDITS_ADDRESS}`);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_BALANCE_KEY);
@@ -157,6 +178,8 @@ const ChatPage: NextPage = () => {
     setTokenBalance(0);
     setTokenExpiry(0);
     setMessages([]);
+    e2eeSessionRef.current = null;
+    setE2eeActive(false);
     localStorage.removeItem(`zk-chat-history-${API_CREDITS_ADDRESS}`);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_BALANCE_KEY);
@@ -171,23 +194,30 @@ const ChatPage: NextPage = () => {
    * Send message using existing conversation token (no proof needed)
    */
   const sendWithToken = async (allMessages: ChatMessage[]) => {
-    setProofStatus("Sending message...");
+    setProofStatus("Encrypting message...");
+
+    const session = await getE2EESession();
+    const plaintextMessages = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
+    const encryptedMsgs = encryptMessages(plaintextMessages, session.modelPublicKeyHex);
+    const e2eeHeaders = buildE2EEHeaders(session);
+
+    setProofStatus("Sending encrypted message...");
 
     const apiRes = await fetch(`${API_URL}/v1/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${conversationToken}`,
+        ...e2eeHeaders,
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [ChatMessage.system(SYSTEM_PROMPT), ...allMessages],
+        messages: encryptedMsgs,
       }),
     });
 
     if (!apiRes.ok) {
       if (apiRes.status === 401 || apiRes.status === 402) {
-        // Token expired/depleted — prompt new conversation
         setConversationEnded(true);
         setConversationToken(null);
         localStorage.removeItem(TOKEN_KEY);
@@ -199,7 +229,6 @@ const ChatPage: NextPage = () => {
       throw new Error(`API error (${apiRes.status}): ${errText}`);
     }
 
-    // Update balance from headers
     const balance = apiRes.headers.get("x-conversation-balance");
     const ended = apiRes.headers.get("x-conversation-ended");
 
@@ -218,6 +247,10 @@ const ChatPage: NextPage = () => {
     }
 
     const apiData = await apiRes.json();
+
+    if (apiData.encrypted_chunks && Array.isArray(apiData.encrypted_chunks)) {
+      return decryptResponseChunks(apiData.encrypted_chunks, session.clientPrivateKey);
+    }
     return apiData.choices?.[0]?.message?.content || apiData.response || "No response";
   };
 
@@ -329,7 +362,14 @@ const ChatPage: NextPage = () => {
     const { proof: proofBytes } = await backend.generateProof(witness);
     await bb.destroy();
 
-    setProofStatus("Starting chat session...");
+    setProofStatus("Setting up E2EE...");
+
+    const session = await getE2EESession();
+    const plaintextMessages = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
+    const encryptedMsgs = encryptMessages(plaintextMessages, session.modelPublicKeyHex);
+    const e2eeHeaders = buildE2EEHeaders(session);
+
+    setProofStatus("Starting encrypted chat session...");
 
     const proofHex =
       "0x" +
@@ -339,17 +379,16 @@ const ChatPage: NextPage = () => {
     const nullifierHashHex = "0x" + nullifierHash.toString(16).padStart(64, "0");
     const rootHex = "0x" + BigInt(merkleData.root).toString(16).padStart(64, "0");
 
-    // POST to /v1/chat/start — single round trip: proof + first message → token + response
     const apiRes = await fetch(`${API_URL}/v1/chat/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...e2eeHeaders },
       body: JSON.stringify({
         proof: proofHex,
         nullifier_hash: nullifierHashHex,
         root: rootHex,
         depth: merkleData.depth,
         model: MODEL,
-        messages: [ChatMessage.system(SYSTEM_PROMPT), ...allMessages],
+        messages: encryptedMsgs,
       }),
     });
 
@@ -381,8 +420,10 @@ const ChatPage: NextPage = () => {
     setCredits(updatedCredits);
     localStorage.setItem(`zk-credits-${API_CREDITS_ADDRESS}`, JSON.stringify(updatedCredits));
 
-    // Return the Venice response
     if (apiData.response) {
+      if (apiData.response.encrypted_chunks && Array.isArray(apiData.response.encrypted_chunks)) {
+        return decryptResponseChunks(apiData.response.encrypted_chunks, session.clientPrivateKey);
+      }
       return apiData.response.choices?.[0]?.message?.content || "No response";
     } else if (apiData.veniceError) {
       throw new Error(`Venice error: ${apiData.veniceError}. Token issued — retry your message.`);
@@ -448,6 +489,11 @@ const ChatPage: NextPage = () => {
             <span className="text-xs font-mono text-base-content/50">zai-org-glm-5</span>
           </div>
           <div className="flex items-center gap-4">
+            {e2eeActive && (
+              <span className="text-xs font-mono text-[#42F38F]/60" title="End-to-end encrypted via Venice TEE">
+                E2EE
+              </span>
+            )}
             {hasActiveConversation && (
               <span className="text-xs font-mono text-[#42F38F]/60">💰 ${tokenBalance.toFixed(4)}</span>
             )}
@@ -457,10 +503,10 @@ const ChatPage: NextPage = () => {
             </span>
             {messages.length > 0 && (
               <button
-                className="cursor-pointer text-xs font-mono text-base-content/20 hover:text-error transition-colors"
+                className="cursor-pointer text-xs font-mono border border-base-content/20 text-base-content/50 hover:border-primary/50 hover:text-primary px-3 py-1 transition-colors"
                 onClick={clearChat}
               >
-                CLEAR
+                /new
               </button>
             )}
           </div>
@@ -473,7 +519,7 @@ const ChatPage: NextPage = () => {
               <div className="text-center">
                 <p className="text-xs font-mono text-base-content/20 tracking-widest mb-3">PRIVATE LLM TERMINAL</p>
                 <p className="font-mono text-base-content/40 text-sm mb-1">
-                  Your identity is hidden behind a ZK proof.
+                  Your identity is hidden behind a ZK proof. Messages are end-to-end encrypted.
                 </p>
                 <p className="font-mono text-base-content/20 text-xs">
                   {availableCredits.length === 0
@@ -595,7 +641,7 @@ const ChatPage: NextPage = () => {
                   </a>
                 </span>
               ) : hasActiveConversation ? (
-                <span>💰 ${tokenBalance.toFixed(4)} remaining · no proof needed</span>
+                <span>💰 ${tokenBalance.toFixed(4)} remaining · E2EE · no proof needed</span>
               ) : (
                 <span>
                   {availableCredits.length} credit

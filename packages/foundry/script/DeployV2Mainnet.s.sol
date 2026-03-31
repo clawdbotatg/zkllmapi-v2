@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import {Script, console} from "forge-std/Script.sol";
-import {UltraVerifier} from "../contracts/UltraVerifier.sol";
 
 /// @notice Mock pricing oracle with configurable price
 contract MockCLAWDPricing {
@@ -31,11 +30,7 @@ contract DeployV2MainnetScript is Script {
         MockCLAWDPricing pricing = new MockCLAWDPricing(pricePerCredit);
         console.log("MockCLAWDPricing deployed:", address(pricing));
 
-        // 2. Deploy UltraVerifier
-        UltraVerifier verifier = new UltraVerifier();
-        console.log("UltraVerifier deployed:", address(verifier));
-
-        // 3. Deploy APICreditsV2
+        // 2. Deploy APICreditsV2
         APICreditsV2 apiCredits = new APICreditsV2(
             0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07, // CLAWD token
             address(pricing),                              // pricing oracle
@@ -52,7 +47,6 @@ contract DeployV2MainnetScript is Script {
         console.log("CLAWD_TOKEN=0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07");
         console.log("PRICING=0x", vm.toString(uint160(address(pricing))));
         console.log("API_CREDITS=0x", vm.toString(uint160(address(apiCredits))));
-        console.log("ULTRA_VERIFIER=0x", vm.toString(uint160(address(verifier))));
     }
 }
 

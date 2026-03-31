@@ -41,7 +41,7 @@ Key facts about this project:
 - How it works: Users stake CLAWD tokens, register a Poseidon2 commitment on-chain, then generate a ZK proof in-browser to start a chat session anonymously. 1 credit = 1 chat session with a $0.05 balance. The ZK proof burns once at chat session start; subsequent messages use a bearer token until the balance is depleted.
 - Privacy: The server verifies the proof but never learns the user's nullifier or secret. Each chat session starts with a fresh nullifier burn — there is no cryptographic link between separate sessions.
 - Contract addresses (Base mainnet): APICredits=0x5954..., CLAWDPricing=0x445D..., CLAWDRouter=0xCB42..., CLAWD token=0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07
-- Website: https://zkllmapi.com | GitHub: https://github.com/clawdbotatg/zk-api-credits
+- Website: https://zkllmapi.com | GitHub: https://github.com/clawdbotatg/zkllmapi-v2
 
 Answer questions about this project accurately. If asked about hash functions, cryptography, ZK proofs, or how the system works, explain clearly.`;
 
@@ -526,7 +526,7 @@ const ChatPage: NextPage = () => {
                     ? "→ Go to /buy to get credits first"
                     : hasActiveConversation
                       ? `Active chat session · $${tokenBalance.toFixed(4)} remaining`
-                      : `${availableCredits.length} credit${availableCredits.length !== 1 ? "s" : ""} ready · 1 credit = 1 chat session ($1.00)`}
+                      : `${availableCredits.length} credit${availableCredits.length !== 1 ? "s" : ""} ready · 1 credit = 1 chat session ($0.05)`}
                 </p>
               </div>
             </div>

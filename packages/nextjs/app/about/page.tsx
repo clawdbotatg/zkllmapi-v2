@@ -51,7 +51,7 @@ const AboutPage: NextPage = () => {
               fork it and deploy it for your own token, your own provider, your own chain.
             </p>
             <p className="text-base-content/70 leading-relaxed mb-4">
-              v2 fixes the flat-rate problem: 1 credit = 1 chat session = $1.00 balance. You pay once, the balance
+              v2 fixes the flat-rate problem: 1 credit = 1 chat session = $0.05 balance. You pay once, the balance
               deducts at actual Venice cost per message. The ZK proof burns once at chat session start — subsequent
               messages use a bearer token. The next step is a ZK-native circuit counter (no bearer token trust
               assumption) — v3 RFC coming soon.
@@ -166,7 +166,7 @@ const AboutPage: NextPage = () => {
                 {
                   step: "3",
                   title: "Buy Credits — one transaction (calls stakeAndRegister())",
-                  body: "You approve CLAWD, then the router purchases N credits by calling stakeAndRegister(amount, commitments[]) on the APICredits contract. The router swaps ETH → CLAWD at market rate and locks N × pricePerCredit CLAWD. Each credit gives you a chat session with a $1.00 balance. The CLAWD amount per credit varies with market price. One transaction, N credits.",
+                  body: "You approve CLAWD (or send ETH/USDC — the router swaps automatically), then the router calls stakeAndRegister(amount, commitments[]) on the APICredits contract. The payment goes directly to the claim recipient. Each credit gives you a chat session with a $0.05 balance. The CLAWD amount per credit varies with the oracle price. One transaction, N credits.",
                 },
                 {
                   step: "4",
@@ -181,7 +181,7 @@ const AboutPage: NextPage = () => {
                 {
                   step: "6",
                   title: "Server verifies and responds",
-                  body: "The server verifies the UltraHonk proof against the onchain root, checks the nullifier hasn't been spent, marks it spent, and starts a chat session. You receive a bearer token with a $1.00 balance — subsequent messages use the token (no proof needed) until the balance is depleted.",
+                  body: "The server verifies the UltraHonk proof against the onchain root, checks the nullifier hasn't been spent, marks it spent, and starts a chat session. You receive a bearer token with a $0.05 balance — subsequent messages use the token (no proof needed) until the balance is depleted.",
                 },
               ].map(({ step, title, body }) => (
                 <div key={step} className="flex gap-4 bg-base-100 rounded-xl p-5 shadow">
@@ -219,7 +219,7 @@ const AboutPage: NextPage = () => {
                   </a>{" "}
                   and the{" "}
                   <a
-                    href="https://github.com/clawdbotatg/zkllmapi-proxy"
+                    href="https://github.com/clawdbotatg/zkllmapi-v2/tree/main/packages/proxy"
                     target="_blank"
                     className="underline hover:text-[#42F38F]"
                   >
@@ -229,25 +229,26 @@ const AboutPage: NextPage = () => {
                 </p>
               </div>
               <div className="bg-base-100 rounded-xl p-5 shadow">
-                <h3 className="font-bold mb-2">API key — Proof on the server</h3>
+                <h3 className="font-bold mb-2">Proxy — Local proof generation</h3>
                 <p className="text-base-content/60 text-sm mb-3">
-                  Send your nullifier, secret, and commitment to the backend. It generates the proof for you.
+                  Run the OpenAI-compatible proxy locally. It generates proofs on your machine, manages credits, and
+                  exposes a standard chat API.
                 </p>
                 <ul className="text-base-content/50 text-xs space-y-1">
-                  <li>✅ No circuit download, no setup</li>
-                  <li>✅ Proof in ~2–3s (server hardware)</li>
-                  <li>⚠️ The backend learns your nullifier and secret</li>
+                  <li>✅ OpenAI-compatible API (works with any client)</li>
+                  <li>✅ Auto-buys and pre-warms proofs</li>
+                  <li>⚠️ Runs on your machine — needs a funded wallet</li>
                 </ul>
                 <p className="text-base-content/60 text-xs mt-3">
                   See{" "}
                   <a
-                    href="https://github.com/clawdbotatg/zkllmapi-v2/blob/main/SKILL.md"
+                    href="https://github.com/clawdbotatg/zkllmapi-v2/tree/main/packages/proxy"
                     target="_blank"
                     className="underline hover:text-[#42F38F]"
                   >
-                    SKILL.md
+                    packages/proxy
                   </a>{" "}
-                  for the full API reference.
+                  in the monorepo.
                 </p>
               </div>
             </div>
@@ -394,9 +395,10 @@ fn main(
           <section className="mb-10">
             <h2 className="text-2xl font-bold mb-4">🎯 Model Policy</h2>
             <p className="text-base-content/70 leading-relaxed">
-              The server runs <strong>zai-org-glm-5</strong> for all API calls. Any{" "}
+              The server runs <strong>zai-org-glm-5</strong> for standard API calls. Any{" "}
               <code className="text-xs bg-base-200 px-1 rounded">model</code> field in your request is accepted but
-              ignored.
+              overridden. For end-to-end encrypted inference, the server uses <strong>e2ee-glm-5</strong> automatically
+              when E2EE headers are present.
             </p>
           </section>
 
@@ -423,7 +425,7 @@ fn main(
                 ],
                 [
                   "⚠️ Credits are stored in localStorage",
-                  "If you clear your browser, unused credits are gone (CLAWD is locked onchain, but the credentials are lost). Active chat session tokens are server-side and expire after 24h. Back up your credits — or script the purchase and let your bot manage them automatically.",
+                  "If you clear your browser, unused credits are gone (the CLAWD was already spent onchain, but your nullifier and secret are lost). Active chat session tokens are server-side and expire after 24h. Back up your credits — or script the purchase and let your bot manage them automatically.",
                 ],
               ].map(([title, body]) => (
                 <div key={title as string} className="bg-base-100 rounded-xl p-4 shadow">
@@ -450,10 +452,10 @@ yarn install
 
 # Configure
 cp packages/backend/.env.example packages/backend/.env
-# Set: CONTRACT_ADDRESS, VENICE_API_KEY (or any OpenAI-compatible key), RPC_URL
+# Set: VENICE_API_KEY, CONTRACT_ADDRESS, RPC_URL, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
 
 # Compile contracts (Foundry)
-cd packages/contracts && forge build
+cd packages/foundry && forge build
 
 # Deploy contract (Foundry)
 # See packages/foundry/script/Deploy.s.sol for instructions

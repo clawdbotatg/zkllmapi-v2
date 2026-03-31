@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { NextPage } from "next";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.v2.zkllmapi.com";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
 interface HealthData {
   status: string;

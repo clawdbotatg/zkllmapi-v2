@@ -7,7 +7,7 @@ export const Footer = () => {
         <span>zkllmapi.com — private LLM access via ZK proofs powered by Venice.ai</span>
         <div className="flex items-center gap-6">
           <a
-            href="https://github.com/clawdbotatg/zk-api-credits"
+            href="https://github.com/clawdbotatg/zkllmapi-v2"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-base-content/60 transition-colors"

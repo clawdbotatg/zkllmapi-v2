@@ -1,83 +1,157 @@
-# 🏗 Scaffold-ETH 2
+# ZK LLM API (v2)
 
-<h4 align="center">
-  <a href="https://docs.scaffoldeth.io">Documentation</a> |
-  <a href="https://scaffoldeth.io">Website</a>
-</h4>
+Anonymous, privacy-preserving access to LLMs using zero-knowledge proofs on Base.
 
-🧪 An open-source, up-to-date toolkit for building decentralized applications (dapps) on the Ethereum blockchain. It's designed to make it easier for developers to create and deploy smart contracts and build user interfaces that interact with those contracts.
+Pay with [CLAWD](https://basescan.org/address/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07) token. The server never learns who you are — it only verifies a ZK proof that you hold a valid, unspent credit in an onchain Merkle tree. Built on [Scaffold-ETH 2](https://scaffoldeth.io).
 
-> [!NOTE]
-> 🤖 Scaffold-ETH 2 is AI-ready! It has everything agents need to build on Ethereum. Check `.agents/`, `.claude/`, `.opencode` or `.cursor/` for more info.
+Based on ["ZK API Usage Credits: LLMs and Beyond"](https://ethresear.ch/t/zk-api-usage-credits-llms-and-beyond/24104) by Vitalik Buterin and Davide Crapis.
 
-⚙️ Built using NextJS, RainbowKit, Foundry, Wagmi, Viem, and Typescript.
+## How It Works
 
-- ✅ **Contract Hot Reload**: Your frontend auto-adapts to your smart contract as you edit it.
-- 🪝 **[Custom hooks](https://docs.scaffoldeth.io/hooks/)**: Collection of React hooks wrapper around [wagmi](https://wagmi.sh/) to simplify interactions with smart contracts with typescript autocompletion.
-- 🧱 [**Components**](https://docs.scaffoldeth.io/components/): Collection of common web3 components to quickly build your frontend.
-- 🔥 **Burner Wallet & Local Faucet**: Quickly test your application with a burner wallet and local faucet.
-- 🔐 **Integration with Wallet Providers**: Connect to different wallet providers and interact with the Ethereum network.
+1. Buy CLAWD and register commitments onchain via the `APICredits` contract on Base
+2. Your browser generates a Noir ZK proof (UltraHonk) proving you own a valid credit
+3. The backend verifies the proof, burns the nullifier, issues a bearer token with a $0.05 session balance
+4. Chat messages deduct from the balance at actual Venice cost — no wallet, no identity
 
-![Debug Contracts tab](https://github.com/scaffold-eth/scaffold-eth-2/assets/55535804/b237af0c-5027-4849-a5c1-2e31495cccb1)
+Two privacy layers: **ZK proofs** hide *who* you are; **Venice TEE/E2EE** hides *what* you're asking.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `packages/nextjs` | Next.js frontend — buy credits, chat, about page (App Router, RainbowKit, Wagmi, DaisyUI) |
+| `packages/foundry` | Solidity contracts — `APICredits` (ERC-20 payments + Poseidon2 Merkle tree), deployment scripts |
+| `packages/backend` | Express API server — verifies UltraHonk proofs (Barretenberg), mirrors onchain Merkle tree, proxies Venice AI, Upstash Redis for nullifiers/tokens |
+| `packages/proxy` | OpenAI-compatible proxy — local proof generation, credit management, CLI chat, E2EE support |
+| `packages/circuits` | Noir ZK circuit — proves Merkle membership + nullifier correctness without revealing identity |
 
 ## Requirements
 
-Before you begin, you need to install the following tools:
-
-- [Node (>= v20.18.3)](https://nodejs.org/en/download/)
-- Yarn ([v1](https://classic.yarnpkg.com/en/docs/install/) or [v2+](https://yarnpkg.com/getting-started/install))
+- [Node.js >= 20.18.3](https://nodejs.org/en/download/)
+- [Yarn v3](https://yarnpkg.com/getting-started/install)
 - [Git](https://git-scm.com/downloads)
+- [Foundry](https://book.getfoundry.sh/getting-started/installation) (for contract compilation)
+- [Nargo](https://noir-lang.org/docs/getting_started/installation/) (for circuit compilation)
 
 ## Quickstart
 
-To get started with Scaffold-ETH 2, follow the steps below:
-
-1. Install dependencies if it was skipped in CLI:
-
-```
-cd my-dapp-example
+```bash
+git clone https://github.com/clawdbotatg/zkllmapi-v2
+cd zkllmapi-v2
 yarn install
 ```
 
-2. Run a local network in the first terminal:
+### Frontend
 
-```
-yarn chain
-```
-
-This command starts a local Ethereum network using Foundry. The network runs on your local machine and can be used for testing and development. You can customize the network configuration in `packages/foundry/foundry.toml`.
-
-3. On a second terminal, deploy the test contract:
-
-```
-yarn deploy
+```bash
+yarn start              # Next.js dev server at http://localhost:3000
 ```
 
-This command deploys a test smart contract to the local network. The contract is located in `packages/foundry/contracts` and can be modified to suit your needs. The `yarn deploy` command uses the deploy script located in `packages/foundry/script` to deploy the contract to the network. You can also customize the deploy script.
+### Backend
 
-4. On a third terminal, start your NextJS app:
+```bash
+cp packages/backend/.env.example packages/backend/.env
+# Edit .env: set VENICE_API_KEY, CONTRACT_ADDRESS, RPC_URL, UPSTASH_REDIS_REST_URL/TOKEN
+
+yarn backend:dev        # Express server at http://localhost:3001
+```
+
+### Contracts (Foundry)
+
+```bash
+yarn chain              # Local Anvil chain
+yarn deploy             # Deploy contracts
+yarn compile            # Compile Solidity + Noir circuits
+```
+
+### Circuits (Noir)
+
+```bash
+yarn circuits:compile   # Compile Noir circuit → packages/circuits/target/circuits.json
+```
+
+### Proxy (OpenAI-compatible)
+
+```bash
+cp packages/proxy/.env.example packages/proxy/.env
+# Edit .env: set PRIVATE_KEY, CONTRACT_ADDRESS, API_URL
+
+yarn proxy:dev          # OpenAI-compatible proxy server
+yarn chat               # CLI chat interface
+```
+
+## Environment Variables
+
+### Backend (`packages/backend/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VENICE_API_KEY` | Yes | Venice AI API key |
+| `CONTRACT_ADDRESS` | Yes | APICredits contract on Base |
+| `UPSTASH_REDIS_REST_URL` | Yes | Upstash Redis URL (nullifiers + tokens) |
+| `UPSTASH_REDIS_REST_TOKEN` | Yes | Upstash Redis token |
+| `RPC_URL` | No | Base RPC (default: `https://mainnet.base.org`) |
+| `WS_URL` | No | Base WebSocket RPC for real-time events |
+| `PORT` | No | Server port (default: 3001) |
+
+### Frontend (`packages/nextjs/.env.local`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | No | Backend URL (default: `https://backend.zkllmapi.com`) |
+| `NEXT_PUBLIC_ALCHEMY_API_KEY` | No | Alchemy key for Base RPC |
+| `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | No | WalletConnect project ID |
+
+## All Commands
+
+```bash
+# Development
+yarn start              # Next.js frontend
+yarn backend:dev        # Backend API server
+yarn proxy:dev          # OpenAI-compatible proxy
+yarn chain              # Local Anvil chain
+yarn deploy             # Deploy contracts
+yarn chat               # CLI chat via proxy
+
+# Building
+yarn compile            # Compile Solidity + Noir
+yarn circuits:compile   # Compile Noir circuit only
+yarn next:build         # Build frontend
+yarn backend:build      # Build backend
+yarn proxy:build        # Build proxy
+
+# Code quality
+yarn lint               # Lint all packages
+yarn format             # Format all packages
+yarn foundry:test       # Run Foundry tests
+
+# Deployment
+yarn vercel:yolo --prod # Deploy frontend to Vercel
+```
+
+## Architecture
 
 ```
-yarn start
+Browser (Next.js)                    Backend (Express)              Base (L1)
+┌─────────────────┐    proof+msg    ┌──────────────┐    read      ┌──────────────┐
+│ Buy credits     │───────────────→│ Verify proof  │←────────────│ APICredits   │
+│ Generate proof  │    bearer token │ Track nulls   │  events     │ Poseidon2 IMT│
+│ Chat UI         │←───────────────│ Proxy Venice  │             │ CLAWD ERC-20 │
+│ E2EE encrypt    │                │ Redis tokens  │             └──────────────┘
+└─────────────────┘                └──────────────┘
+                                          │
+                                          ▼
+                                   Venice AI (TEE/E2EE)
 ```
 
-Visit your app on: `http://localhost:3000`. You can interact with your smart contract using the `Debug Contracts` page. You can tweak the app config in `packages/nextjs/scaffold.config.ts`.
+## Links
 
-Run smart contract test with `yarn foundry:test`
+- [Live app](https://zkllmapi.com)
+- [Original paper](https://ethresear.ch/t/zk-api-usage-credits-llms-and-beyond/24104)
+- [CLAWD token](https://basescan.org/address/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07)
+- [About page](https://zkllmapi.com/about) — full technical breakdown
+- [Scaffold-ETH 2 docs](https://docs.scaffoldeth.io)
 
-- Edit your smart contracts in `packages/foundry/contracts`
-- Edit your frontend homepage at `packages/nextjs/app/page.tsx`. For guidance on [routing](https://nextjs.org/docs/app/building-your-application/routing/defining-routes) and configuring [pages/layouts](https://nextjs.org/docs/app/building-your-application/routing/pages-and-layouts) checkout the Next.js documentation.
-- Edit your deployment scripts in `packages/foundry/script`
+## License
 
-
-## Documentation
-
-Visit our [docs](https://docs.scaffoldeth.io) to learn how to start building with Scaffold-ETH 2.
-
-To know more about its features, check out our [website](https://scaffoldeth.io).
-
-## Contributing to Scaffold-ETH 2
-
-We welcome contributions to Scaffold-ETH 2!
-
-Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
+MIT

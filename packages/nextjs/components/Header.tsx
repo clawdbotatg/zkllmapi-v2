@@ -68,7 +68,7 @@ export const Header = () => {
         {/* Right */}
         <div className="flex items-center gap-3">
           <a
-            href="https://github.com/clawdbotatg/zk-api-credits"
+            href="https://github.com/clawdbotatg/zkllmapi-v2"
             target="_blank"
             rel="noopener noreferrer"
             className="text-base-content/30 hover:text-base-content/70 transition-colors text-xs font-mono hidden md:block"

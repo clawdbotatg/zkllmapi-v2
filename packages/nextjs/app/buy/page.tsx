@@ -541,7 +541,7 @@ const BuyPage: NextPage = () => {
             <p className="text-xs font-mono text-primary mb-3 tracking-widest">BUY CREDITS</p>
             <h1 className="text-4xl font-mono font-bold mb-3">Get API Access</h1>
             <p className="font-mono text-base-content/50 text-sm">
-              One credit = one private chat session ($1.00 balance). No account. No identity.
+              One credit = one private chat session ($0.05 balance). No account. No identity.
               {quoteData
                 ? ` · ~$${Number(formatEther((quoteData as [bigint, bigint])[1] / BigInt(Math.max(1, numCredits)))).toFixed(4)} per credit`
                 : creditPriceUSD
@@ -693,7 +693,7 @@ const BuyPage: NextPage = () => {
               )}
 
               <p className="mt-3 text-xs font-mono text-base-content/30">
-                * Each credit = one chat session ($1.00 balance). Keys can also be used with the proxy for programmatic
+                * Each credit = one chat session ($0.05 balance). Keys can also be used with the proxy for programmatic
                 access.
               </p>
             </div>
@@ -836,7 +836,7 @@ const BuyPage: NextPage = () => {
                     </summary>
                     <div className="mt-3 border border-[#222] bg-[#111] overflow-x-auto">
                       <pre className="p-4 text-xs font-mono text-base-content/50 leading-relaxed">{`# Each key encodes a secret + nullifier + commitment.
-# 1 credit = 1 chat session ($1.00 balance).
+# 1 credit = 1 chat session ($0.05 balance).
 #
 # Step 1: Start a chat session (burns the ZK proof once)
 #   POST https://backend.zkllmapi.com/v1/chat/start

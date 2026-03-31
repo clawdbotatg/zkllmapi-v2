@@ -130,7 +130,7 @@ const Home: NextPage = () => {
                 {
                   n: "03",
                   title: "Start a chat session",
-                  body: "POST your proof to start a chat session. You get a bearer token with a $1.00 balance — keep chatting until it runs out.",
+                  body: "POST your proof to start a chat session. You get a bearer token with a $0.05 balance — keep chatting until it runs out.",
                 },
               ].map(({ n, title, body }, i) => (
                 <div key={n} className={`p-8 ${i < 2 ? "md:border-r border-b md:border-b-0 border-[#333]" : ""}`}>
@@ -156,8 +156,8 @@ const Home: NextPage = () => {
               </div>
               <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Run the OpenAI-compatible proxy locally.
 # It auto-buys credits, generates ZK proofs client-side, and manages sessions.
-git clone https://github.com/clawdbotatg/zkllmapi-proxy
-cd zkllmapi-proxy && npm install && npm start
+git clone https://github.com/clawdbotatg/zkllmapi-v2
+cd zkllmapi-v2 && yarn install && yarn proxy:dev
 
 # Point any OpenAI client at the proxy:
 curl -X POST http://localhost:3100/v1/chat/completions \\
@@ -178,7 +178,7 @@ curl -X POST http://localhost:3100/v1/chat/completions \\
           {/* Bottom links */}
           <div className="flex flex-wrap gap-8 text-xs font-mono text-base-content/50 bg-black/60 backdrop-blur-sm px-4 py-3 border border-[#333]">
             <a
-              href="https://github.com/clawdbotatg/zk-llm-frontend"
+              href="https://github.com/clawdbotatg/zkllmapi-v2/tree/main/packages/nextjs"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-[#42F38F] transition-colors"
@@ -186,7 +186,7 @@ curl -X POST http://localhost:3100/v1/chat/completions \\
               FRONTEND GITHUB ↗
             </a>
             <a
-              href="https://github.com/clawdbotatg/zk-api-credits"
+              href="https://github.com/clawdbotatg/zkllmapi-v2/tree/main/packages/backend"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-[#42F38F] transition-colors"
@@ -194,7 +194,7 @@ curl -X POST http://localhost:3100/v1/chat/completions \\
               BACKEND GITHUB ↗
             </a>
             <a
-              href="https://github.com/clawdbotatg/zkllmapi-proxy"
+              href="https://github.com/clawdbotatg/zkllmapi-v2/tree/main/packages/proxy"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-[#42F38F] transition-colors"
@@ -202,12 +202,12 @@ curl -X POST http://localhost:3100/v1/chat/completions \\
               PROXY GITHUB ↗
             </a>
             <a
-              href="https://github.com/clawdbotatg/zkllmapi-client"
+              href="https://github.com/clawdbotatg/zkllmapi-v2"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-[#42F38F] transition-colors"
             >
-              CLI GITHUB ↗
+              MONOREPO ↗
             </a>
             <a
               href={apiCreditsAddress ? `https://basescan.org/address/${apiCreditsAddress}` : "#"}

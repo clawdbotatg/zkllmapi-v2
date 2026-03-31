@@ -4,85 +4,88 @@ This file provides guidance to coding agents working in this repository.
 
 ## Project Overview
 
-Scaffold-ETH 2 (SE-2) is a starter kit for building dApps on Ethereum. It comes in **two flavors** based on the Solidity framework:
+**ZK LLM API (v2)** — anonymous, privacy-preserving LLM access using zero-knowledge proofs on Base. Users pay with CLAWD token; the server verifies a ZK proof of valid credit without learning who the user is. Built on Scaffold-ETH 2 (Foundry flavor).
 
-- **Hardhat flavor**: Uses `packages/hardhat` with hardhat-deploy plugin
-- **Foundry flavor**: Uses `packages/foundry` with Forge scripts
+This is a **Foundry-only** repo (no `packages/hardhat`).
 
-Both flavors share the same frontend package:
+### Packages
 
-- **packages/nextjs**: React frontend (Next.js App Router, not Pages Router, RainbowKit, Wagmi, Viem, TypeScript, Tailwind CSS with DaisyUI)
+| Package | Name | Role |
+|---------|------|------|
+| `packages/nextjs` | `@se-2/nextjs` | Next.js App Router frontend — buy credits, chat, about page (RainbowKit, Wagmi, Viem, DaisyUI) |
+| `packages/foundry` | `@se-2/foundry` | Solidity contracts — `APICredits` (ERC-20 payments + Poseidon2 incremental Merkle tree) |
+| `packages/backend` | `@zkllmapi/backend` | Express API server — verifies UltraHonk proofs (Barretenberg), mirrors onchain Merkle tree, proxies Venice AI, Upstash Redis for nullifiers/tokens |
+| `packages/proxy` | `@zkllmapi/proxy` | OpenAI-compatible proxy — local proof generation, credit management, CLI chat, E2EE |
+| `packages/circuits` | `@zkllmapi/circuits` | Noir ZK circuit — proves Merkle membership + nullifier correctness |
 
-### Detecting Which Flavor You're Using
+### Key Technical Details
 
-Check which package exists in the repository:
+- **Chain**: Base mainnet (chainId 8453)
+- **ZK**: Noir circuits compiled with Nargo, proofs verified via Barretenberg UltraHonk
+- **Hashing**: Poseidon2 everywhere (must match between circuit, backend, frontend, and on-chain)
+- **LLM Provider**: Venice AI (with TEE/E2EE support)
+- **Contract interaction**: This app primarily uses `externalContracts.ts` (not `deployedContracts.ts`) for production Base contracts (APICredits, CLAWDRouter, CLAWDPricing, CLAWDToken, USDC)
+- **Auth flow**: ZK proof at session start → bearer token for subsequent messages ($0.05 balance per credit)
 
-- If `packages/hardhat` exists → **Hardhat flavor** (follow Hardhat instructions)
-- If `packages/foundry` exists → **Foundry flavor** (follow Foundry instructions)
+### Frontend Routes
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Marketing hero with live stats |
+| `/buy` | Purchase credits (CLAWD/USDC/ETH via CLAWDRouter) |
+| `/chat` | Chat UI with in-browser ZK proof generation |
+| `/about` | Full technical breakdown |
+| `/debug` | Backend health and API endpoint listing |
+| `/fork` | Self-hosting guide |
 
 ## Common Commands
 
-Commands work the same for both flavors unless noted otherwise:
-
 ```bash
 # Development workflow (run each in separate terminal)
-yarn chain          # Start local blockchain (Hardhat or Anvil)
-yarn deploy         # Deploy contracts to local network
-yarn start          # Start Next.js frontend at http://localhost:3000
+yarn start              # Next.js frontend at http://localhost:3000
+yarn backend:dev        # Express backend at http://localhost:3001
+yarn proxy:dev          # OpenAI-compatible proxy
+yarn chain              # Local Anvil chain (for contract dev)
+yarn deploy             # Deploy contracts to local network
+yarn chat               # CLI chat via proxy
+
+# Circuits
+yarn circuits:compile   # Compile Noir circuit
+yarn compile            # Compile Solidity + Noir
 
 # Code quality
-yarn lint           # Lint both packages
-yarn format         # Format both packages
+yarn lint               # Lint all packages
+yarn format             # Format all packages
 
 # Building
-yarn next:build     # Build frontend
-yarn compile        # Compile Solidity contracts
+yarn next:build         # Build frontend
+yarn backend:build      # Build backend
+yarn proxy:build        # Build proxy
 
-# Contract verification (works for both)
+# Contract management
 yarn verify --network <network>
-
-# Account management (works for both)
-yarn generate            # Generate new deployer account
-yarn account:import      # Import existing private key
-yarn account             # View current account info
-
-# Deploy to live network
+yarn generate           # Generate new deployer account
+yarn account:import     # Import existing private key
+yarn account            # View current account info
 yarn deploy --network <network>   # e.g., sepolia, mainnet, base
 
-yarn vercel:yolo --prod # for deployment of frontend
+# Deployment
+yarn vercel:yolo --prod # Deploy frontend to Vercel
 ```
 
 ## Architecture
 
-### Smart Contract Development
+### Smart Contract Development (Foundry)
 
-#### Hardhat Flavor
-
-- Contracts: `packages/hardhat/contracts/`
-- Deployment scripts: `packages/hardhat/deploy/` (uses hardhat-deploy plugin)
-- Tests: `packages/hardhat/test/`
-- Config: `packages/hardhat/hardhat.config.ts`
-- Deploying specific contract:
-  - If the deploy script has:
-    ```typescript
-    // In packages/hardhat/deploy/01_deploy_my_contract.ts
-    deployMyContract.tags = ["MyContract"];
-    ```
-  - `yarn deploy --tags MyContract`
-
-#### Foundry Flavor
-
-- Contracts: `packages/foundry/contracts/`
+- Contracts: `packages/foundry/contracts/` — main contract is `APICredits.sol`
+- Libraries: `Poseidon2IMT.sol`, `LibPoseidon2.sol`, `Field.sol` (Poseidon2 Merkle tree)
 - Deployment scripts: `packages/foundry/script/` (uses custom deployment strategy)
-  - Example: `packages/foundry/script/Deploy.s.sol` and `packages/foundry/script/DeployYourContract.s.sol`
 - Tests: `packages/foundry/test/`
 - Config: `packages/foundry/foundry.toml`
-- Deploying a specific contract:
-  - Create a separate deployment script and run `yarn deploy --file DeployYourContract.s.sol`
-
-#### Both Flavors
-
+- Deploying a specific contract: `yarn deploy --file DeployYourContract.s.sol`
 - After `yarn deploy`, ABIs are auto-generated to `packages/nextjs/contracts/deployedContracts.ts`
+
+**Note:** Production contracts are already deployed on Base. The frontend uses `externalContracts.ts` (not `deployedContracts.ts`) for live contract addresses and ABIs (APICredits, CLAWDRouter, CLAWDPricing, CLAWDToken, USDC).
 
 ### Frontend Contract Interaction
 
@@ -165,17 +168,13 @@ Use `notification` from `~~/utils/scaffold-eth` for success/error/warning feedba
 
 ### Configure Target Network before deploying to testnet / mainnet.
 
-#### Hardhat
-
-Add networks in `packages/hardhat/hardhat.config.ts` if not present.
-
 #### Foundry
 
 Add RPC endpoints in `packages/foundry/foundry.toml` if not present.
 
 #### NextJs
 
-Add networks in `packages/nextjs/scaffold.config.ts` if not present. This file also contains configuration for polling interval, API keys. Remember to decrease the polling interval for L2 chains.
+Add networks in `packages/nextjs/scaffold.config.ts` if not present. This file also contains configuration for polling interval, API keys. The production target network is Base (`base` in scaffold.config.ts).
 
 ## Code Style Guide
 
@@ -186,7 +185,7 @@ Add networks in `packages/nextjs/scaffold.config.ts` if not present. This file a
 | `UpperCamelCase` | class / interface / type / enum / decorator / type parameters / component functions in TSX / JSXElement type parameter |
 | `lowerCamelCase` | variable / parameter / function / property / module alias                                                              |
 | `CONSTANT_CASE`  | constant / enum / global variables                                                                                     |
-| `snake_case`     | for hardhat deploy files and foundry script files                                                                      |
+| `snake_case`     | for foundry script files                                                                                               |
 
 ### Import Paths
 

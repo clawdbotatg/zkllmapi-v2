@@ -72,7 +72,7 @@ const ForkPage: NextPage = () => {
                       <p>├─ commitment = poseidon2(nullifier, secret)</p>
                       <p>├─ nullifier_hash = poseidon2(nullifier)</p>
                       <p>├─ verify Merkle proof against onchain root</p>
-                      <p>└─ 10-30s proof time in-browser</p>
+                      <p>└─ 30-60s proof time in-browser</p>
                     </div>
                   </div>
                 </div>
@@ -90,7 +90,7 @@ const ForkPage: NextPage = () => {
                       <span className="text-xs font-normal opacity-50 ml-2">— your privacy gateway</span>
                     </h3>
                     <p className="text-sm opacity-70 mt-1">
-                      Verifies proofs at chat session start, issues bearer tokens with $1.00 balance, proxies to any LLM
+                      Verifies proofs at chat session start, issues bearer tokens with $0.05 balance, proxies to any LLM
                       provider. Tracks nullifiers and session tokens in Redis. Never sees your wallet.
                     </p>
                     <div className="mt-3 font-mono text-xs opacity-60 space-y-0.5">
@@ -122,21 +122,22 @@ cd zkllmapi-v2
 yarn install
 
 # 3. Deploy APICredits with YOUR token
-#    Edit packages/foundry/script/Deploy.s.sol
+#    Edit packages/foundry/script/Deploy.s.sol — add your deployment logic
+#    (see DeployLocal.s.sol for reference)
 #    Set your ERC-20 address + price per credit
 cd packages/foundry
 forge script script/Deploy.s.sol:Deploy --rpc-url $BASE_RPC --broadcast --verify
 
-# 4. Update the API server
-#    Set CONTRACT_ADDRESS in your server env
-CONTRACT_ADDRESS=0xYourNewContract
+# 4. Configure the API server
+cp packages/backend/.env.example packages/backend/.env
+#    Set: VENICE_API_KEY, CONTRACT_ADDRESS, RPC_URL
+#    Set: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
 
 # 5. Point at your own LLM provider
-#    Edit packages/backend/src/index.ts
-#    Change VENICE_API_KEY to your key, or swap the proxy URL entirely
+#    Edit VENICE_BASE_URL in .env, or swap the provider in src/index.ts
 
 # 6. Run
-cd packages/backend && yarn start`}
+cd packages/backend && yarn dev`}
               </pre>
             </div>
 

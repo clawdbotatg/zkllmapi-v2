@@ -5,9 +5,9 @@ Noir circuit for anonymous API credit consumption via zero-knowledge proofs.
 ## What It Proves
 
 The circuit proves that:
-1. The prover knows a `secret` and `nullifier` pair
-2. `commitment = Poseidon2(secret, nullifier)` exists as a leaf in the Merkle tree
-3. `nullifier_hash = Poseidon2(nullifier, nullifier)` is computed correctly
+1. The prover knows a `nullifier` and `secret` pair
+2. `commitment = Poseidon2(nullifier, secret)` exists as a leaf in the Merkle tree
+3. `nullifier_hash = Poseidon2(nullifier)` is computed correctly
 4. The Merkle root matches the on-chain tree root
 
 **Public inputs** (visible to verifier/server):
@@ -23,10 +23,10 @@ The circuit proves that:
 
 ## How It Works
 
-1. User buys credits → contract stores `Poseidon2(secret, nullifier)` in a Merkle tree
+1. User buys credits → contract stores `Poseidon2(nullifier, secret)` in a Merkle tree
 2. User generates a ZK proof in-browser proving they know a valid leaf
 3. Server verifies the proof and checks `nullifier_hash` hasn't been seen before
-4. If valid, the server starts a conversation — issuing a bearer token with a $1.00 balance. Subsequent messages use the token (no proof needed) until the balance is depleted. **The server never learns who the user is.**
+4. If valid, the server starts a conversation — issuing a bearer token with a $0.05 balance. Subsequent messages use the token (no proof needed) until the balance is depleted. **The server never learns who the user is.**
 
 The ZK proof breaks the link between the wallet that paid and the conversation.
 

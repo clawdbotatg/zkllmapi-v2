@@ -40,8 +40,9 @@ const ForkPage: NextPage = () => {
                       <span className="text-xs font-normal opacity-50 ml-2">— the forkable primitive</span>
                     </h3>
                     <p className="text-sm opacity-70 mt-1">
-                      ZK Merkle tree + ERC-20 staking. No opinion on token, price, or payment method. Accepts any ERC-20
-                      set at deploy time. This is what you deploy.
+                      ZK Merkle tree + ERC-20 payments. No opinion on token, price, or payment method. Accepts any
+                      ERC-20 set at deploy time. Supports direct payment (stakeAndRegister) or stake-then-register
+                      flows. This is what you deploy.
                     </p>
                     <div className="mt-3 font-mono text-xs opacity-60 space-y-0.5">
                       <p>├─ stake() / unstake()</p>
@@ -142,8 +143,9 @@ cd packages/backend && yarn dev`}
             </div>
 
             <p className="text-sm opacity-50 mt-3">
-              APICredits works standalone with a fixed price in your token. For dynamic USD-pegged pricing, add a TWAP
-              oracle and modify stakeAndRegister to read it.
+              APICredits accepts a pricing oracle at deploy time. The register() path uses a fixed owner-set price;
+              stakeAndRegister() reads the oracle live. Deploy your own ICLAWDPricing implementation for TWAP, fixed USD
+              peg, or any pricing logic you want.
             </p>
           </div>
 

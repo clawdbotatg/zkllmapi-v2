@@ -213,7 +213,7 @@ app.post("/v1/chat/completions", async (req, res) => {
     if (unspent.length === 0) {
       res.status(503).json({
         error: {
-          message: "No credits available. Proxy is buying more — try again in ~30 seconds.",
+          message: "No credits available. Proxy is purchasing 5 more onchain now — try again in ~30 seconds. Make sure your PRIVATE_KEY is set in .env with enough ETH + CLAWD to buy credits.",
           type: "service_unavailable",
         },
       });

@@ -157,7 +157,13 @@ const Home: NextPage = () => {
               <pre className="p-6 text-xs font-mono text-base-content/70 leading-relaxed overflow-x-auto">{`# Run the OpenAI-compatible proxy locally.
 # It auto-buys credits, generates ZK proofs client-side, and manages sessions.
 git clone https://github.com/clawdbotatg/zkllmapi-v2
-cd zkllmapi-v2 && yarn install && yarn proxy:dev
+cd zkllmapi-v2 && yarn install
+
+# Configure — needs a funded wallet with PRIVATE_KEY set
+cp packages/proxy/.env.example packages/proxy/.env
+# Edit .env: set PRIVATE_KEY (funded Base wallet with ETH + CLAWD), CONTRACT_ADDRESS, API_URL
+
+yarn proxy:dev   # starts on :3100, auto-buys credits on first request
 
 # Point any OpenAI client at the proxy:
 curl -X POST http://localhost:3100/v1/chat/completions \\

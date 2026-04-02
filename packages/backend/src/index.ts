@@ -102,8 +102,10 @@ let treeSize = 0;
 // Cached tree leaves for /tree endpoint (avoids RPC calls per request)
 const treeLeaves: bigint[] = [];
 
-// The latest (current) root — never pruned from the valid set
+// The latest (current) onchain root — never pruned from the valid set
 let currentRoot: string | null = null;
+// The latest compact root (bb.js binary tree, matches Noir circuit) — also never pruned
+let currentCompactRoot: string | null = null;
 
 // Last block processed by the event watcher
 let lastProcessedBlock = 0n;
@@ -174,7 +176,7 @@ async function pruneOldRoots(): Promise<void> {
     let pruned = 0;
 
     for (const [root, blockNum] of validRoots) {
-      if (blockNum < cutoff && root !== currentRoot) {
+      if (blockNum < cutoff && root !== currentRoot && root !== currentCompactRoot) {
         validRoots.delete(root);
         pruned++;
       }
@@ -243,6 +245,7 @@ async function buildHistoricalRoots(): Promise<void> {
   if (compactRoot !== null) {
     const compactRootHex = rootToHex(compactRoot);
     validRoots.set(compactRootHex, lastBlock);
+    currentCompactRoot = compactRootHex;
     console.log(`✓ Compact root: ${compactRootHex}`);
   }
 
@@ -317,6 +320,7 @@ async function handleNewEvent(event: {
   if (compactRoot !== null) {
     const compactRootHex = rootToHex(compactRoot);
     validRoots.set(compactRootHex, event.blockNumber);
+    currentCompactRoot = compactRootHex;
     console.log(`New compact root: ${compactRootHex}`);
   }
 

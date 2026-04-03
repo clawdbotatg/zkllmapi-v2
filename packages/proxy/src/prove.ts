@@ -3,6 +3,17 @@ import { Noir } from "@noir-lang/noir_js";
 import { API_URL, BUY_THRESHOLD, BUY_CHUNK } from "./config.js";
 import type { Credit } from "./credits.js";
 
+export interface ProofTimings {
+  fetchTree: number;
+  computePath: number;
+  initBarretenberg: number;
+  poseidon2Hash: number;
+  fetchCircuit: number;
+  generateWitness: number;
+  generateProof: number;
+  total: number;
+}
+
 export interface ReadyProof {
   commitment: string;
   proofHex: string;
@@ -10,6 +21,7 @@ export interface ReadyProof {
   nullifierHashHex: string;
   rootHex: string;
   depth: number;
+  timings?: ProofTimings;
 }
 
 interface TreeData {
@@ -50,23 +62,34 @@ function computeMerklePath(treeData: TreeData, commitment: string) {
 }
 
 export async function generateProof(credit: Credit): Promise<ReadyProof> {
-  console.log("[prove] Fetching Merkle tree...");
-  const treeData: TreeData = await fetch(`${API_URL}/tree`).then((r) => r.json());
+  const t0 = Date.now();
+  const timings: ProofTimings = { fetchTree: 0, computePath: 0, initBarretenberg: 0, poseidon2Hash: 0, fetchCircuit: 0, generateWitness: 0, generateProof: 0, total: 0 };
 
+  // 1. Fetch Merkle tree
+  const t1 = Date.now();
+  const treeData: TreeData = await fetch(`${API_URL}/tree`).then((r) => r.json());
+  timings.fetchTree = Date.now() - t1;
+
+  // 2. Compute Merkle path
+  const t2 = Date.now();
   const merkleData = computeMerklePath(treeData, credit.commitment);
+  timings.computePath = Date.now() - t2;
   if (!merkleData) {
     throw new Error(`Commitment ${credit.commitment} not found in tree. Wait for on-chain sync.`);
   }
   console.log(`[prove] Found commitment at leaf index ${merkleData.leafIndex}`);
 
-  console.log("[prove] Initializing Barretenberg...");
+  // 3. Initialize Barretenberg
+  const t3 = Date.now();
   const bb = await Barretenberg.new({ threads: 1 });
+  timings.initBarretenberg = Date.now() - t3;
 
-  // Compute nullifier hash = poseidon2([nullifier])
+  // 4. Poseidon2 hash (nullifier → nullifier hash)
+  const t4 = Date.now();
   const nullifierFr = new Fr(BigInt(credit.nullifier));
   const nullifierHashFr = await bb.poseidon2Hash([nullifierFr]);
   const nullifierHashBig = BigInt("0x" + Buffer.from(nullifierHashFr.value).toString("hex"));
-
+  timings.poseidon2Hash = Date.now() - t4;
   await bb.destroy();
 
   // Pad to MAX_DEPTH=16
@@ -79,12 +102,13 @@ export async function generateProof(credit: Credit): Promise<ReadyProof> {
     ...Array(MAX_DEPTH - merkleData.depth).fill("0"),
   ];
 
-  // Fetch circuit
-  console.log("[prove] Fetching circuit...");
+  // 5. Fetch circuit
+  const t5 = Date.now();
   const circuit = await fetch(`${API_URL}/circuit`).then((r) => r.json());
+  timings.fetchCircuit = Date.now() - t5;
 
-  // Generate witness
-  console.log("[prove] Generating witness...");
+  // 6. Generate witness
+  const t6 = Date.now();
   const noir = new Noir(circuit);
   const { witness } = await noir.execute({
     nullifier_hash: nullifierHashBig.toString(),
@@ -95,19 +119,22 @@ export async function generateProof(credit: Credit): Promise<ReadyProof> {
     indices: paddedIndices,
     siblings: paddedSiblings,
   });
+  timings.generateWitness = Date.now() - t6;
 
-  // Generate proof (this takes 30-60 seconds)
-  console.log("[prove] Generating ZK proof (this may take 30-60 seconds)...");
+  // 7. Generate UltraHonk proof
+  const t7 = Date.now();
   const backend = new UltraHonkBackend(circuit.bytecode);
   const { proof: proofBytes, publicInputs } = await backend.generateProof(witness);
   await backend.destroy();
+  timings.generateProof = Date.now() - t7;
 
   const proofHex = "0x" + Buffer.from(proofBytes).toString("hex");
   const rootHex = "0x" + BigInt(merkleData.root).toString(16).padStart(64, "0");
   const nullifierHashHex = "0x" + nullifierHashBig.toString(16).padStart(64, "0");
+  timings.total = Date.now() - t0;
 
   console.log("[prove] ✅ Proof generated!");
-  return { commitment: credit.commitment, proofHex, publicInputs, nullifierHashHex, rootHex, depth: merkleData.depth };
+  return { commitment: credit.commitment, proofHex, publicInputs, nullifierHashHex, rootHex, depth: merkleData.depth, timings };
 }
 
 export async function preWarm(allCredits: Credit[]): Promise<void> {

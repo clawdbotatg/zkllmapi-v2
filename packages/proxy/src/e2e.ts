@@ -17,7 +17,7 @@ import { loadCredits, saveCredits, type Credit } from "./credits.js"
 import { generateProof, type ReadyProof, type ProofTimings } from "./prove.js"
 import { encryptChatRequest } from "./e2ee.js"
 
-const MODEL = "zai-org-glm-5"
+const MODEL = process.env.MODEL ?? "zai-org-glm-5"
 
 type StepStatus = "PASS" | "FAIL" | "SKIP"
 

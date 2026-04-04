@@ -957,8 +957,8 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     // ─── Token-based flow: no ZK proof needed ───────────────
     console.log(`[${reqId}] POST /v1/chat [token] — ${bearerToken.slice(0, 16)}...`);
 
-    const { messages } = req.body;
-    const isE2EE = detectE2EEFromHeaders(req);
+    const { messages, encrypted_messages } = req.body;
+    const isE2EE = detectE2EEFromHeaders(req) || !!encrypted_messages;
 
     if (!messages || !Array.isArray(messages)) {
       res.status(400).json({ error: "Missing required field: messages" });

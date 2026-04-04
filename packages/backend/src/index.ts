@@ -864,6 +864,10 @@ async function callVenice(
 
   const VENICE_TIMEOUT_MS = parseInt(process.env.VENICE_TIMEOUT_MS || "90000");
   const tStart = Date.now();
+  // Log what we're about to send to Venice for E2EE debugging
+  const msgs = veniceBody.messages as any[];
+  const firstMsgContent = msgs?.[0]?.content;
+  console.log(`[${reqId}] → Venice: model=${veniceModel} isE2EE=${isE2EE} stream=${isE2EE} msgs=${msgs?.length} firstMsg.len=${firstMsgContent?.length ?? "N/A"} encrypted_src=${_encrypted_messages ? "encrypted_messages" : "messages"}`);
   const veniceResponse = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: veniceHeaders,
@@ -874,7 +878,11 @@ async function callVenice(
 
   if (!veniceResponse.ok) {
     const errorText = await veniceResponse.text();
-    console.error(`[${reqId}] Venice error ${veniceResponse.status} — ${veniceMs}ms:`, errorText);
+    // Log the actual request we sent so we can debug Venice errors
+    console.error(`[${reqId}] Venice error ${veniceResponse.status} — ${veniceMs}ms:`);
+    console.error(`[${reqId}]   model=${veniceModel} isE2EE=${isE2EE} stream=${isE2EE}`);
+    console.error(`[${reqId}]   messages[0] content length: ${((veniceBody.messages as any[]) ?? [])[0]?.content?.length ?? "N/A"}`);
+    console.error(`[${reqId}]   raw error:`, errorText);
     throw Object.assign(new Error("Venice API error"), { statusCode: 502 });
   }
 

@@ -867,7 +867,16 @@ async function callVenice(
   // Log what we're about to send to Venice for E2EE debugging
   const msgs = veniceBody.messages as any[];
   const firstMsgContent = msgs?.[0]?.content;
-  console.log(`[${reqId}] → Venice: model=${veniceModel} isE2EE=${isE2EE} stream=${isE2EE} msgs=${msgs?.length} firstMsg.len=${firstMsgContent?.length ?? "N/A"} encrypted_src=${_encrypted_messages ? "encrypted_messages" : "messages"}`);
+  const clientPubKey = veniceHeaders["x-venice-tee-client-pub-key"] ?? "(none)";
+  const modelPubKey = veniceHeaders["x-venice-tee-model-pub-key"] ?? "(none)";
+  const signingAlgo = veniceHeaders["x-venice-tee-signing-algo"] ?? "(none)";
+  const firstMsgContentSample = firstMsgContent?.length > 0
+    ? firstMsgContent.substring(0, 40) + (firstMsgContent.length > 40 ? "..." : "")
+    : "(empty)";
+  console.log(`[${reqId}] → Venice: model=${veniceModel} isE2EE=${isE2EE} stream=${isE2EE}`);
+  console.log(`[${reqId}]   E2EE headers → client_pubkey=${clientPubKey.substring(0,20)}... model_pubkey=${modelPubKey.substring(0,20)}... signing_algo=${signingAlgo}`);
+  console.log(`[${reqId}]   messages: ${msgs?.length} msgs, first content: "${firstMsgContentSample}"`);
+  console.log(`[${reqId}]   encrypted_src=${_encrypted_messages ? "encrypted_messages (from browser)" : "plaintext messages"}`);
   const veniceResponse = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: veniceHeaders,

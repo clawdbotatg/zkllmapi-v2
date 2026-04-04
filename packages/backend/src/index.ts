@@ -752,7 +752,7 @@ app.post("/v1/chat/start", chatLimiter, async (req, res) => {
 
     console.log(`[${reqId}] calling Venice (${ts()})${isE2EE ? " [E2EE 🔒]" : ""}`);
     try {
-      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, null, isE2EE);
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
       const totalMs = Date.now() - t0;
 
       if (costUsd > 0) {
@@ -852,9 +852,10 @@ async function callVenice(
   }
 
   const veniceModel = isE2EE ? E2EE_MODEL : MODEL;
+  // For E2EE: send encrypted_messages (from browser) instead of plaintext messages
   const veniceBody: Record<string, any> = {
     model: veniceModel,
-    messages,
+    messages: _encrypted_messages ?? messages,
     stream: isE2EE,
   };
   if (isE2EE) {
@@ -978,7 +979,7 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     console.log(`[${reqId}] token valid, balance: $${tokenData.balanceRemaining.toFixed(6)} (${ts()})`);
 
     try {
-      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, null, isE2EE);
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
 
       let balanceRemaining = tokenData.balanceRemaining;
       let conversationEnded = false;
@@ -1084,7 +1085,7 @@ app.post("/v1/chat", tokenLimiter, async (req, res) => {
     }
 
     try {
-      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, null, isE2EE);
+      const { veniceData, costUsd, veniceMs } = await callVenice(req, reqId, messages, encrypted_messages, isE2EE);
       const totalMs = Date.now() - t0;
 
       if (veniceData?.usage) {

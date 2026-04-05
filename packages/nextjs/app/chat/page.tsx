@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { NextPage } from "next";
 import externalContracts from "~~/contracts/externalContracts";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
 // ⚠️ Use addresses from externalContracts — NEVER hardcode stale addresses
@@ -177,7 +178,10 @@ const ChatPage: NextPage = () => {
     setProofStatus("Sending message...");
 
     const messagesToSend = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
-    console.log("[zk-chat] sending plaintext messages:", messagesToSend.map(m => m.content.slice(0, 30)));
+    console.log(
+      "[zk-chat] sending plaintext messages:",
+      messagesToSend.map(m => m.content.slice(0, 30)),
+    );
 
     const apiRes = await fetch(`${API_URL}/v1/chat`, {
       method: "POST",
@@ -338,7 +342,10 @@ const ChatPage: NextPage = () => {
     setProofStatus("Starting chat session...");
 
     const messagesToSend = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
-    console.log("[zk-chat] sending plaintext messages:", messagesToSend.map(m => m.content.slice(0, 30)));
+    console.log(
+      "[zk-chat] sending plaintext messages:",
+      messagesToSend.map(m => m.content.slice(0, 30)),
+    );
 
     const proofHex =
       "0x" +

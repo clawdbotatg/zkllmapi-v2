@@ -3,14 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { NextPage } from "next";
 import externalContracts from "~~/contracts/externalContracts";
-import {
-  type E2EESession,
-  buildE2EEHeaders,
-  decryptResponseChunks,
-  encryptMessages,
-  fetchAttestation,
-} from "~~/utils/e2ee";
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://backend.zkllmapi.com";
 
 // ⚠️ Use addresses from externalContracts — NEVER hardcode stale addresses
@@ -106,9 +98,8 @@ const ChatPage: NextPage = () => {
   const [tokenExpiry, setTokenExpiry] = useState<number>(0);
   const [conversationEnded, setConversationEnded] = useState(false);
 
-  // E2EE session (cached across messages, reset on new conversation)
-  const e2eeSessionRef = useRef<E2EESession | null>(null);
-  const [e2eeActive, setE2eeActive] = useState(false);
+  // E2EE is disabled — always false
+  const [e2eeActive] = useState(false);
 
   const availableCredits = credits.filter(c => !c.spent);
   const hasActiveConversation = conversationToken && tokenBalance > 0 && tokenExpiry > Date.now();
@@ -150,22 +141,12 @@ const ChatPage: NextPage = () => {
     }
   }, [messages]);
 
-  async function getE2EESession(): Promise<E2EESession> {
-    if (e2eeSessionRef.current) return e2eeSessionRef.current;
-    const session = await fetchAttestation(API_URL);
-    e2eeSessionRef.current = session;
-    setE2eeActive(true);
-    return session;
-  }
-
   const clearChat = () => {
     setMessages([]);
     setConversationToken(null);
     setTokenBalance(0);
     setTokenExpiry(0);
     setConversationEnded(false);
-    e2eeSessionRef.current = null;
-    setE2eeActive(false);
     localStorage.removeItem(`zk-chat-history-${API_CREDITS_ADDRESS}`);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_BALANCE_KEY);
@@ -178,8 +159,6 @@ const ChatPage: NextPage = () => {
     setTokenBalance(0);
     setTokenExpiry(0);
     setMessages([]);
-    e2eeSessionRef.current = null;
-    setE2eeActive(false);
     localStorage.removeItem(`zk-chat-history-${API_CREDITS_ADDRESS}`);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_BALANCE_KEY);
@@ -194,43 +173,21 @@ const ChatPage: NextPage = () => {
    * Send message using existing conversation token (no proof needed)
    */
   const sendWithToken = async (allMessages: ChatMessage[]) => {
-    setProofStatus("Encrypting message...");
+    // TODO: re-enable E2EE once Venice E2EE endpoint format is fixed (needs base64 blob, not per-message hex)
+    setProofStatus("Sending message...");
 
-    const session = await getE2EESession();
-    const plaintextMessages = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
-    console.log(
-      "[zk-chat] E2EE session model:",
-      session.model,
-      "modelPubKey:",
-      session.modelPublicKeyHex?.slice(0, 20),
-    );
-    console.log(
-      "[zk-chat] plaintext messages:",
-      plaintextMessages.map(m => m.content.slice(0, 30)),
-    );
-    const encryptedMsgs = encryptMessages(plaintextMessages, session.modelPublicKeyHex);
-    console.log(
-      "[zk-chat] encrypted messages:",
-      encryptedMsgs.map(m => ({ role: m.role, contentLen: m.content.length, contentSample: m.content.slice(0, 20) })),
-    );
-    if (!encryptedMsgs[0]?.content.startsWith("04") && session.modelPublicKeyHex) {
-      console.error("[zk-chat] CRITICAL: encryption FAILED — content does not start with 04 prefix");
-    }
-    const e2eeHeaders = buildE2EEHeaders(session);
-    console.log("[zk-chat] E2EE headers client pub:", e2eeHeaders["x-venice-tee-client-pub-key"]?.slice(0, 20));
-
-    setProofStatus("Sending encrypted message...");
+    const messagesToSend = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
+    console.log("[zk-chat] sending plaintext messages:", messagesToSend.map(m => m.content.slice(0, 30)));
 
     const apiRes = await fetch(`${API_URL}/v1/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${conversationToken}`,
-        ...e2eeHeaders,
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: encryptedMsgs,
+        messages: messagesToSend,
       }),
     });
 
@@ -266,9 +223,6 @@ const ChatPage: NextPage = () => {
 
     const apiData = await apiRes.json();
 
-    if (apiData.encrypted_chunks && Array.isArray(apiData.encrypted_chunks)) {
-      return decryptResponseChunks(apiData.encrypted_chunks, session.clientPrivateKey);
-    }
     return apiData.choices?.[0]?.message?.content || apiData.response || "No response";
   };
 
@@ -380,32 +334,11 @@ const ChatPage: NextPage = () => {
     const { proof: proofBytes } = await backend.generateProof(witness);
     await bb.destroy();
 
-    setProofStatus("Setting up E2EE...");
+    // TODO: re-enable E2EE once Venice E2EE endpoint format is fixed
+    setProofStatus("Starting chat session...");
 
-    const session = await getE2EESession();
-    const plaintextMessages = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
-    console.log(
-      "[zk-chat] E2EE session model:",
-      session.model,
-      "modelPubKey:",
-      session.modelPublicKeyHex?.slice(0, 20),
-    );
-    console.log(
-      "[zk-chat] plaintext messages:",
-      plaintextMessages.map(m => m.content.slice(0, 30)),
-    );
-    const encryptedMsgs = encryptMessages(plaintextMessages, session.modelPublicKeyHex);
-    console.log(
-      "[zk-chat] encrypted messages:",
-      encryptedMsgs.map(m => ({ role: m.role, contentLen: m.content.length, contentSample: m.content.slice(0, 20) })),
-    );
-    if (!encryptedMsgs[0]?.content.startsWith("04") && session.modelPublicKeyHex) {
-      console.error("[zk-chat] CRITICAL: encryption FAILED — content does not start with 04 prefix");
-    }
-    const e2eeHeaders = buildE2EEHeaders(session);
-    console.log("[zk-chat] E2EE headers client pub:", e2eeHeaders["x-venice-tee-client-pub-key"]?.slice(0, 20));
-
-    setProofStatus("Starting encrypted chat session...");
+    const messagesToSend = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
+    console.log("[zk-chat] sending plaintext messages:", messagesToSend.map(m => m.content.slice(0, 30)));
 
     const proofHex =
       "0x" +
@@ -417,14 +350,14 @@ const ChatPage: NextPage = () => {
 
     const apiRes = await fetch(`${API_URL}/v1/chat/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...e2eeHeaders },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         proof: proofHex,
         nullifier_hash: nullifierHashHex,
         root: rootHex,
         depth: merkleData.depth,
         model: MODEL,
-        messages: encryptedMsgs,
+        messages: messagesToSend,
       }),
     });
 
@@ -458,9 +391,7 @@ const ChatPage: NextPage = () => {
 
     if (apiData.response) {
       if (apiData.response.encrypted_chunks && Array.isArray(apiData.response.encrypted_chunks)) {
-        return decryptResponseChunks(apiData.response.encrypted_chunks, session.clientPrivateKey);
-      }
-      return apiData.response.choices?.[0]?.message?.content || "No response";
+        return apiData.response.choices?.[0]?.message?.content || "No response";
     } else if (apiData.veniceError) {
       throw new Error(`Venice error: ${apiData.veniceError}. Token issued — retry your message.`);
     }

@@ -198,8 +198,26 @@ const ChatPage: NextPage = () => {
 
     const session = await getE2EESession();
     const plaintextMessages = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
+    console.log(
+      "[zk-chat] E2EE session model:",
+      session.model,
+      "modelPubKey:",
+      session.modelPublicKeyHex?.slice(0, 20),
+    );
+    console.log(
+      "[zk-chat] plaintext messages:",
+      plaintextMessages.map(m => m.content.slice(0, 30)),
+    );
     const encryptedMsgs = encryptMessages(plaintextMessages, session.modelPublicKeyHex);
+    console.log(
+      "[zk-chat] encrypted messages:",
+      encryptedMsgs.map(m => ({ role: m.role, contentLen: m.content.length, contentSample: m.content.slice(0, 20) })),
+    );
+    if (!encryptedMsgs[0]?.content.startsWith("04") && session.modelPublicKeyHex) {
+      console.error("[zk-chat] CRITICAL: encryption FAILED — content does not start with 04 prefix");
+    }
     const e2eeHeaders = buildE2EEHeaders(session);
+    console.log("[zk-chat] E2EE headers client pub:", e2eeHeaders["x-venice-tee-client-pub-key"]?.slice(0, 20));
 
     setProofStatus("Sending encrypted message...");
 
@@ -366,8 +384,26 @@ const ChatPage: NextPage = () => {
 
     const session = await getE2EESession();
     const plaintextMessages = [ChatMessage.system(SYSTEM_PROMPT), ...allMessages];
+    console.log(
+      "[zk-chat] E2EE session model:",
+      session.model,
+      "modelPubKey:",
+      session.modelPublicKeyHex?.slice(0, 20),
+    );
+    console.log(
+      "[zk-chat] plaintext messages:",
+      plaintextMessages.map(m => m.content.slice(0, 30)),
+    );
     const encryptedMsgs = encryptMessages(plaintextMessages, session.modelPublicKeyHex);
+    console.log(
+      "[zk-chat] encrypted messages:",
+      encryptedMsgs.map(m => ({ role: m.role, contentLen: m.content.length, contentSample: m.content.slice(0, 20) })),
+    );
+    if (!encryptedMsgs[0]?.content.startsWith("04") && session.modelPublicKeyHex) {
+      console.error("[zk-chat] CRITICAL: encryption FAILED — content does not start with 04 prefix");
+    }
     const e2eeHeaders = buildE2EEHeaders(session);
+    console.log("[zk-chat] E2EE headers client pub:", e2eeHeaders["x-venice-tee-client-pub-key"]?.slice(0, 20));
 
     setProofStatus("Starting encrypted chat session...");
 

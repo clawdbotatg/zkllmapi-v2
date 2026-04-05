@@ -855,7 +855,7 @@ async function callVenice(
   // For E2EE: send encrypted_messages (from browser) instead of plaintext messages
   const veniceBody: Record<string, any> = {
     model: veniceModel,
-    messages: _encrypted_messages ?? messages,
+    messages: (isE2EE && !_encrypted_messages) ? messages : (_encrypted_messages ?? messages),
     stream: isE2EE,
   };
   if (isE2EE) {

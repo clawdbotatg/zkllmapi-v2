@@ -492,7 +492,7 @@ const ChatPage: NextPage = () => {
               <div className="text-center">
                 <p className="text-xs font-mono text-base-content/20 tracking-widest mb-3">PRIVATE LLM TERMINAL</p>
                 <p className="font-mono text-base-content/40 text-sm mb-1">
-                  Your identity is hidden behind a ZK proof. Messages are end-to-end encrypted.
+                  Your identity is hidden behind a ZK proof. Anonymous, unlinkable access.
                 </p>
                 <p className="font-mono text-base-content/20 text-xs">
                   {availableCredits.length === 0
@@ -614,7 +614,7 @@ const ChatPage: NextPage = () => {
                   </a>
                 </span>
               ) : hasActiveConversation ? (
-                <span>💰 ${tokenBalance.toFixed(4)} remaining · E2EE · no proof needed</span>
+                <span>💰 ${tokenBalance.toFixed(4)} remaining · no proof needed</span>
               ) : (
                 <span>
                   {availableCredits.length} credit

@@ -124,11 +124,9 @@ export function encryptMessages(
   messages: { role: string; content: string }[],
   modelPublicKeyHex: string,
 ): { role: string; content: string }[] {
-  return messages.map(msg =>
-    msg.role === "user" || msg.role === "system"
-      ? { ...msg, content: encryptMessage(msg.content, modelPublicKeyHex) }
-      : msg,
-  );
+  // Venice E2EE requires ALL message content to be encrypted when TEE headers are present.
+  // Encrypt user, system, AND assistant messages — mixed plaintext/ciphertext causes 400 errors.
+  return messages.map(msg => ({ ...msg, content: encryptMessage(msg.content, modelPublicKeyHex) }));
 }
 
 // ─── Decryption ──────────────────────────────────────────────────

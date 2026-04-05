@@ -390,8 +390,7 @@ const ChatPage: NextPage = () => {
     localStorage.setItem(`zk-credits-${API_CREDITS_ADDRESS}`, JSON.stringify(updatedCredits));
 
     if (apiData.response) {
-      if (apiData.response.encrypted_chunks && Array.isArray(apiData.response.encrypted_chunks)) {
-        return apiData.response.choices?.[0]?.message?.content || "No response";
+      return apiData.response.choices?.[0]?.message?.content || "No response";
     } else if (apiData.veniceError) {
       throw new Error(`Venice error: ${apiData.veniceError}. Token issued — retry your message.`);
     }

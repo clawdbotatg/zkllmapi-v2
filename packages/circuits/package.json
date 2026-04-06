@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "nargo compile 2>&1 && bb generate-verification-key --package ./target/zk_apiCredits.json --output ./target/vk && echo 'VK generated'",
+    "build": "nargo compile 2>&1 && bb generate-verification-key --package ./target/circuits.json --output ./target/vk && echo 'VK generated'",
     "compile": "nargo compile 2>&1",
     "typecheck": "echo 'Nargo handles its own types'"
   },

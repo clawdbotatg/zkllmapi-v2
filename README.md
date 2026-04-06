@@ -74,7 +74,7 @@ yarn circuits:compile   # Compile Noir circuit → packages/circuits/target/circ
 
 ```bash
 cp packages/proxy/.env.example packages/proxy/.env
-# Edit .env: set PRIVATE_KEY, CONTRACT_ADDRESS, API_URL
+# Edit .env: set PRIVATE_KEY (funded Base wallet with CLAWD + ETH)
 
 yarn proxy:dev          # OpenAI-compatible proxy server
 yarn chat               # CLI chat interface
@@ -93,6 +93,21 @@ yarn chat               # CLI chat interface
 | `RPC_URL` | No | Base RPC (default: `https://mainnet.base.org`) |
 | `WS_URL` | No | Base WebSocket RPC for real-time events |
 | `PORT` | No | Server port (default: 3001) |
+| `VENICE_BASE_URL` | No | Venice API base URL (default: `https://api.venice.ai/api/v1`) |
+| `VENICE_MODEL` | No | Default model (default: `zai-org-glm-5`) |
+| `VENICE_E2EE_MODEL` | No | E2EE model (default: `e2ee-glm-5`) |
+| `COST_MULTIPLIER` | No | Multiplier applied to Venice usage cost |
+
+### Proxy (`packages/proxy/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PRIVATE_KEY` | Yes | Wallet private key (funded Base wallet with CLAWD + ETH) |
+| `API_URL` | No | Backend URL (default: `https://backend.zkllmapi.com`) |
+| `PORT` | No | Proxy port (default: 3100) |
+| `BUY_THRESHOLD` | No | Auto-buy when unspent credits drop below this (default: 3) |
+| `BUY_CHUNK` | No | Credits to buy per auto-buy (default: 5) |
+| `RPC_URL` | No | Base RPC (default: `https://mainnet.base.org`) |
 
 ### Frontend (`packages/nextjs/.env.local`)
 
@@ -132,7 +147,7 @@ yarn vercel:yolo --prod # Deploy frontend to Vercel
 ## Architecture
 
 ```
-Browser (Next.js)                    Backend (Express)              Base (L1)
+Browser (Next.js)                    Backend (Express)              Base
 ┌─────────────────┐    proof+msg    ┌──────────────┐    read      ┌──────────────┐
 │ Buy credits     │───────────────→│ Verify proof  │←────────────│ APICredits   │
 │ Generate proof  │    bearer token │ Track nulls   │  events     │ Poseidon2 IMT│

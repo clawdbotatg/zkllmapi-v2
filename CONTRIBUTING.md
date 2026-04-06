@@ -1,86 +1,74 @@
-# Welcome to Scaffold-ETH 2 Contributing Guide
+# Contributing to ZK LLM API (v2)
 
-Thank you for investing your time in contributing to Scaffold-ETH 2!
-
-This guide aims to provide an overview of the contribution workflow to help us make the contribution process effective for everyone involved.
+Thank you for your interest in contributing!
 
 ## About the Project
 
-Scaffold-ETH 2 is a minimal and forkable repo providing builders with a starter kit to build decentralized applications on Ethereum.
+ZK LLM API provides anonymous, privacy-preserving LLM access using zero-knowledge proofs on Base. Built on [Scaffold-ETH 2](https://scaffoldeth.io) (Foundry flavor).
 
-Read the [README](README.md) to get an overview of the project.
+Read the [README](README.md) for a project overview.
 
-### Vision
+## Getting Started
 
-The goal of Scaffold-ETH 2 is to provide the primary building blocks for a decentralized application.
-
-The repo can be forked to include integrations and more features, but we want to keep the master branch simple and minimal.
-
-### Project Status
-
-The project is under active development.
-
-You can view the open Issues, follow the development process and contribute to the project.
-
-## Getting started
-
-You can contribute to this repo in many ways:
+You can contribute in many ways:
 
 - Solve open issues
 - Report bugs or feature requests
-- Improve the documentation
+- Improve documentation
+- Add new features
 
-Contributions are made via Issues and Pull Requests (PRs). A few general guidelines for contributions:
+### General Guidelines
 
-- Search for existing Issues and PRs before creating your own.
-- Contributions should only fix/add the functionality in the issue OR address style issues, not both.
-- If you're running into an error, please give context. Explain what you're trying to do and how to reproduce the error.
-- Please use the same formatting in the code repository. You can configure your IDE to do it by using the prettier / linting config files included in each package.
-- If applicable, please edit the README.md file to reflect the changes.
+- Search for existing Issues and PRs before creating your own
+- Use the same formatting as the codebase (prettier/linting configs are included)
+- If applicable, update documentation to reflect your changes
 
-### Issues
+## Development Setup
 
-Issues should be used to report problems, request a new feature, or discuss potential changes before a PR is created.
+```bash
+git clone https://github.com/clawdbotatg/zkllmapi-v2
+cd zkllmapi-v2
+yarn install
 
-#### Solve an issue
+# Frontend
+yarn start
 
-Scan through our [existing issues](https://github.com/scaffold-eth/scaffold-eth-2/issues) to find one that interests you.
+# Backend (requires .env — see README)
+yarn backend:dev
 
-If a contributor is working on the issue, they will be assigned to the individual. If you find an issue to work on, you are welcome to assign it to yourself and open a PR with a fix for it.
+# Contracts (local dev)
+yarn chain
+yarn deploy
+```
 
-#### Create a new issue
+See [README.md](README.md) for full environment setup and all available commands.
 
-If a related issue doesn't exist, you can open a new issue.
-
-Some tips to follow when you are creating an issue:
-
-- Provide as much context as possible. Over-communicate to give the most details to the reader.
-- Include the steps to reproduce the issue or the reason for adding the feature.
-- Screenshots, videos etc., are highly appreciated.
-
-### Pull Requests
-
-#### Pull Request Process
-
-We follow the ["fork-and-pull" Git workflow](https://github.com/susam/gitpr)
+## Pull Request Process
 
 1. Fork the repo
-2. Clone the project
-3. Create a new branch with a descriptive name
-4. Commit your changes to the new branch
-5. Push changes to your fork
-6. Open a PR in our repository and tag one of the maintainers to review your PR
+2. Create a new branch with a descriptive name
+3. Make your changes
+4. Ensure linting passes: `yarn lint`
+5. Push and open a PR
 
-Here are some tips for a high-quality pull request:
+### Tips
 
-- Create a title for the PR that accurately defines the work done.
-- Structure the description neatly to make it easy to consume by the readers. For example, you can include bullet points and screenshots instead of having one large paragraph.
-- Add the link to the issue if applicable.
-- Have a good commit message that summarises the work done.
+- Write a clear title and description
+- Link related issues
+- Keep PRs focused — one feature or fix per PR
 
-Once you submit your PR:
+## Project Structure
 
-- We may ask questions, request additional information or ask for changes to be made before a PR can be merged. Please note that these are to make the PR clear for everyone involved and aims to create a frictionless interaction process.
-- As you update your PR and apply changes, mark each conversation resolved.
+| Package | Purpose |
+|---------|---------|
+| `packages/nextjs` | Next.js frontend |
+| `packages/foundry` | Solidity contracts (Foundry) |
+| `packages/backend` | Express API server |
+| `packages/proxy` | OpenAI-compatible proxy |
+| `packages/circuits` | Noir ZK circuit |
 
-Once the PR is approved, we'll "squash-and-merge" to keep the git commit history clean.
+See [AGENTS.md](AGENTS.md) for detailed architecture and code style guidance.
+
+## License
+
+MIT

@@ -42,7 +42,7 @@ curl http://localhost:3100/v1/chat/completions \
 - `POST /v1/conversation/end` — end current conversation early
 - `GET /health` — proxy status, credit count, proof queue depth
 
-The proxy auto-buys credits when inventory drops below threshold (default: 3 unspent). Configure with `BUY_THRESHOLD` and `BUY_CHUNK` env vars.
+The proxy auto-buys credits when unspent inventory drops below `BUY_THRESHOLD` (default: 3). It buys `BUY_CHUNK` credits at a time (default: 5). Configure both via env vars.
 
 ### Option B: Direct Backend API (Browser-Style)
 
@@ -84,17 +84,19 @@ Content-Type: application/json
 The balance deducts at actual Venice cost per message. When it hits $0, the session ends.
 
 **Useful read endpoints:**
-- `GET /health` — tree size, nullifier count, root
-- `GET /contract` — contract address and chain ID
+- `GET /health` — tree size, nullifier count, root, valid roots count
+- `GET /stats` — usage statistics
+- `GET /contract` — contract address, chain ID, current root
 - `GET /tree` — full Merkle tree (for computing proof paths)
 - `GET /circuit` — compiled Noir circuit JSON
 - `GET /nullifier/:hash` — check if a nullifier has been spent
+- `GET /v1/tee/attestation` — Venice TEE attestation (for E2EE)
 
-## Model
+## Models
 
-The server runs `zai-org-glm-5` for all requests. The `model` field is accepted but ignored.
+The default model is `zai-org-glm-5`. You can pass any model name in the `model` field and it will be forwarded to Venice AI.
 
-For end-to-end encrypted inference (Venice TEE), use model `e2ee-glm-5`.
+For end-to-end encrypted inference (Venice TEE), use any model prefixed with `e2ee-` (e.g. `e2ee-glm-5`). E2EE models encrypt your prompts and responses using ECDH key exchange with the TEE.
 
 ## Key Details
 

@@ -50,7 +50,6 @@ nargo compile
 
 This generates:
 - `target/circuits.json` — the compiled circuit (ACIR bytecode)
-- Use `nargo codegen-verifier` to generate a Solidity verifier contract
 
 ## Test
 
